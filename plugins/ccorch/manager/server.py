@@ -12,10 +12,13 @@ be local (blocks DNS rebinding).
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
+import subprocess
 import sys
 import threading
+import time
 import urllib.request
 import webbrowser
 from collections.abc import Iterator
@@ -28,13 +31,25 @@ from fastapi import FastAPI, HTTPException, Request  # noqa: E402
 from fastapi.responses import FileResponse, JSONResponse, Response  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
 
-from ccorch_lib import branch, claude, config, gate, install, intake, terminal  # noqa: E402
+from ccorch_lib import (  # noqa: E402
+    branch,
+    claude,
+    config,
+    gate,
+    install,
+    intake,
+    plugin_update,
+    terminal,
+)
 from ccorch_lib.git import Git, GitError, find_root  # noqa: E402
 from ccorch_lib.inbox import Inbox, InboxError  # noqa: E402
 from ccorch_lib.state import StateStore  # noqa: E402
 
 STATIC = Path(__file__).resolve().parent / "static"
+PLUGIN_JSON = Path(__file__).resolve().parents[1] / ".claude-plugin" / "plugin.json"
+VERSION = str(json.loads(PLUGIN_JSON.read_text(encoding="utf-8")).get("version", "dev"))
 DEFAULT_MARKET = {"name": "ccorch-tools", "url": "", "ref": "main"}
+START_MODES = ("", "quick", "plan")
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "[::1]"}
 
 
@@ -163,7 +178,7 @@ def _errors(raw: dict[str, Any]) -> list[str]:
 # --- app -----------------------------------------------------------------------------------
 
 
-def create_app(reg: Registry) -> FastAPI:
+def create_app(reg: Registry, port: int = 7420) -> FastAPI:
     app = FastAPI(title="ccorch manager", docs_url=None, redoc_url=None)
 
     @app.middleware("http")
@@ -179,10 +194,17 @@ def create_app(reg: Registry) -> FastAPI:
         response: Response = await call_next(request)
         return response
 
+    @app.post("/api/shutdown")
+    def shutdown() -> dict[str, bool]:
+        # Lets a newer plugin version replace a still-running older settings page.
+        threading.Timer(0.3, os._exit, (0,)).start()
+        return {"ok": True}
+
     @app.get("/api/meta")
     def meta() -> dict[str, Any]:
         return {
             "app": "ccorch-manager",
+            "version": VERSION,
             "defaults": config.DEFAULTS,
             "ticket_types": list(config.TICKET_TYPES),
             "model_choices": list(config.MODEL_CHOICES),
@@ -330,6 +352,65 @@ def create_app(reg: Registry) -> FastAPI:
             "api_key_env": bool(removed),
         }
 
+    def _exe() -> str:
+        exe = claude.resolve()
+        if exe is None:
+            raise HTTPException(400, "claude not found")
+        return exe
+
+    def _plugin_status() -> dict[str, Any]:
+        try:
+            return plugin_update.status(_exe(), VERSION)
+        except plugin_update.UpdateError as exc:
+            raise HTTPException(502, str(exc)) from exc
+
+    @app.get("/api/plugin")
+    def plugin_info() -> dict[str, Any]:
+        return _plugin_status()
+
+    @app.post("/api/plugin/check")
+    def plugin_check() -> dict[str, Any]:
+        current = _plugin_status()
+        if current["marketplace"]:
+            try:
+                plugin_update.refresh(_exe(), current["marketplace"])
+            except plugin_update.UpdateError as exc:
+                raise HTTPException(502, str(exc)) from exc
+        return _plugin_status()
+
+    @app.post("/api/plugin/update")
+    def plugin_do_update() -> dict[str, Any]:
+        current = _plugin_status()
+        if not current["plugin_id"]:
+            raise HTTPException(400, "ccorch is not installed as a plugin (development checkout)")
+        try:
+            output = plugin_update.update(_exe(), current["plugin_id"])
+        except plugin_update.UpdateError as exc:
+            raise HTTPException(502, str(exc)) from exc
+        after = _plugin_status()
+        relaunching = False
+        new_server = Path(after["install_path"] or "") / "manager" / "server.py"
+        if (
+            not after["dev_checkout"]
+            and after["installed_version"] != VERSION
+            and new_server.is_file()
+        ):
+            # The new version's server replaces this one (it asks us to shut down).
+            _spawn_detached(
+                [
+                    "uv",
+                    "run",
+                    "--quiet",
+                    "--script",
+                    str(new_server),
+                    "--port",
+                    str(port),
+                    "--no-browser",
+                ]
+            )
+            relaunching = True
+        return {**after, "output": output, "relaunching": relaunching}
+
     @app.post("/api/claude/update")
     def claude_update() -> dict[str, Any]:
         exe = claude.resolve()
@@ -379,14 +460,19 @@ def create_app(reg: Registry) -> FastAPI:
         _, inbox = _inbox(repo_id)
         return {"deleted": inbox.delete(ticket_id)}
 
+    def _ticket_prompt(ticket_id: str, mode: str) -> str:
+        if mode not in START_MODES:
+            raise HTTPException(400, f"mode must be one of {START_MODES}")
+        return f"/ccorch:ticket {ticket_id} {mode}".strip()
+
     @app.get("/api/repos/{repo_id}/inbox/{ticket_id}/command")
-    def inbox_command(repo_id: int, ticket_id: str) -> dict[str, str]:
+    def inbox_command(repo_id: int, ticket_id: str, mode: str = "") -> dict[str, str]:
         path = _repo_by_id(reg, repo_id)
-        prompt = f"/ccorch:ticket {ticket_id}"
+        prompt = _ticket_prompt(ticket_id, mode)
         return {"slash": prompt, "shell": f"cd {path} && {terminal.display_command(prompt)}"}
 
     @app.post("/api/repos/{repo_id}/inbox/{ticket_id}/launch")
-    def inbox_launch(repo_id: int, ticket_id: str) -> dict[str, Any]:
+    def inbox_launch(repo_id: int, ticket_id: str, mode: str = "") -> dict[str, Any]:
         path, inbox = _inbox(repo_id)
         if inbox.get(ticket_id) is None:
             raise HTTPException(404, "ticket not in inbox")
@@ -394,7 +480,7 @@ def create_app(reg: Registry) -> FastAPI:
         if exe is None:
             raise HTTPException(400, "claude not found")
         try:
-            terminal.open_terminal(path, terminal.claude_argv(exe, f"/ccorch:ticket {ticket_id}"))
+            terminal.open_terminal(path, terminal.claude_argv(exe, _ticket_prompt(ticket_id, mode)))
         except (terminal.TerminalError, OSError) as exc:
             raise HTTPException(500, str(exc)) from exc
         return {"launched": True}
@@ -438,12 +524,42 @@ def create_app(reg: Registry) -> FastAPI:
     return app
 
 
-def _already_running(port: int) -> bool:
+def _spawn_detached(argv: list[str]) -> None:
+    kwargs: dict[str, Any] = {
+        "stdin": subprocess.DEVNULL,
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+    }
+    if sys.platform == "win32":
+        kwargs["creationflags"] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+    else:
+        kwargs["start_new_session"] = True
+    subprocess.Popen(argv, **kwargs)
+
+
+def _running_version(port: int) -> str | None:
+    """Version of a ccorch settings page already on `port`, or None if nothing (ours) runs."""
     try:
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/meta", timeout=1) as resp:
-            return bool(json.loads(resp.read()).get("app") == "ccorch-manager")
+            meta = json.loads(resp.read())
     except (OSError, ValueError):
-        return False
+        return None
+    if meta.get("app") != "ccorch-manager":
+        return None
+    return str(meta.get("version", "old"))
+
+
+def _stop_running(port: int) -> None:
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{port}/api/shutdown", method="POST", headers={"X-CCorch": "1"}
+    )
+    # Old versions have no shutdown endpoint; the port check below reports that.
+    with contextlib.suppress(OSError):
+        urllib.request.urlopen(req, timeout=2).close()
+    for _ in range(30):
+        if _running_version(port) is None:
+            return
+        time.sleep(0.2)
 
 
 def main() -> None:
@@ -452,18 +568,30 @@ def main() -> None:
     parser.add_argument("--no-browser", action="store_true")
     args = parser.parse_args()
     url = f"http://127.0.0.1:{args.port}"
-    if _already_running(args.port):
+    running = _running_version(args.port)
+    if running == VERSION:
         print(f"ccorch manager already running at {url}")
         if not args.no_browser:
             webbrowser.open(url)
         return
+    if running is not None:
+        print(f"Replacing ccorch manager {running} with {VERSION}")
+        _stop_running(args.port)
+        if _running_version(args.port) is not None:
+            sys.exit(
+                f"An older ccorch manager is still running on port {args.port}; stop it "
+                "(or restart your computer) and run /ccorch:manage again."
+            )
     import uvicorn
 
     if not args.no_browser:
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()
     print(f"ccorch manager at {url}  (Ctrl+C to stop)")
     uvicorn.run(
-        create_app(Registry(registry_path())), host="127.0.0.1", port=args.port, log_level="warning"
+        create_app(Registry(registry_path()), args.port),
+        host="127.0.0.1",
+        port=args.port,
+        log_level="warning",
     )
 
 

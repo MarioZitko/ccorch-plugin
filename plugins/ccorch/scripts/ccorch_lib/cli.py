@@ -117,7 +117,8 @@ def cmd_context(args: argparse.Namespace) -> int:
     )
     wf = cfg["workflow"]
     print(
-        f"- Workflow: plan_approval={wf['plan_approval']} review={wf['review']} "
+        f"- Workflow: planning={wf['planning']} plan_approval={wf['plan_approval']} "
+        f"review={wf['review']} review_quick={wf['review_quick']} "
         f"max_fix_iterations={wf['max_fix_iterations']} small_inline={wf['small_inline']}"
     )
     print(

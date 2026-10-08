@@ -51,8 +51,10 @@ DEFAULTS: dict[str, Any] = {
         "assignee": "",
     },
     "workflow": {
+        "planning": "auto",
         "plan_approval": True,
         "review": True,
+        "review_quick": True,
         "max_fix_iterations": 2,
         "small_inline": True,
     },
@@ -68,6 +70,7 @@ DEFAULTS: dict[str, Any] = {
 }
 
 MODEL_ROLES = ("intake", "planner", "implementer", "reviewer")
+PLANNING_CHOICES = ("auto", "always", "never")
 _ID_PREFIX = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,15}$")
 
 _PLACEHOLDER = re.compile(r"\{([^{}]*)\}")
@@ -185,7 +188,12 @@ def validate(cfg: dict[str, Any]) -> None:
     _expect(_str_list(mr["labels"]), "mr.labels must be a list of strings", errors)
     _expect(isinstance(mr["assignee"], str), "mr.assignee must be a string", errors)
 
-    for key in ("plan_approval", "review", "small_inline"):
+    _expect(
+        wf["planning"] in PLANNING_CHOICES,
+        f"workflow.planning must be one of {PLANNING_CHOICES}",
+        errors,
+    )
+    for key in ("plan_approval", "review", "review_quick", "small_inline"):
         _expect(isinstance(wf[key], bool), f"workflow.{key} must be true/false", errors)
     _expect(
         isinstance(wf["max_fix_iterations"], int) and 0 <= wf["max_fix_iterations"] <= 5,

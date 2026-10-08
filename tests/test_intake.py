@@ -105,6 +105,9 @@ def test_intake_endpoint_assigns_ids_and_saves(
     cmd = client.get("/api/repos/0/inbox/T-001/command").json()
     assert cmd["slash"] == "/ccorch:ticket T-001"
     assert "--plugin-dir" in cmd["shell"]  # dev checkout -> loads the plugin explicitly
+    quick = client.get("/api/repos/0/inbox/T-001/command", params={"mode": "quick"}).json()
+    assert quick["slash"] == "/ccorch:ticket T-001 quick"
+    assert client.get("/api/repos/0/inbox/T-001/command", params={"mode": "x"}).status_code == 400
     assert client.delete("/api/repos/0/inbox/PRJ-9", headers=H).json() == {"deleted": True}
 
     info = client.get("/api/claude").json()

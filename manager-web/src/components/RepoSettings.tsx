@@ -115,6 +115,28 @@ export function RepoSettings(props: { repoId: number; meta: Meta; config: Config
       </Section>
 
       <Section title="Workflow">
+        <Row>
+          <Field
+            label="Planning"
+            hint={
+              {
+                auto: "Small changes (most bug fixes, config/copy tweaks) skip planning; bigger ones get a plan.",
+                always: "Every ticket gets a plan first.",
+                never: "Never plan - always the quick path (one change, one commit).",
+              }[c.workflow.planning]
+            }
+          >
+            <Select
+              value={c.workflow.planning}
+              options={["auto", "always", "never"]}
+              onChange={(v) => update((x) => void (x.workflow.planning = v as Config["workflow"]["planning"]))}
+            />
+          </Field>
+        </Row>
+        <p className="text-xs text-zinc-500">
+          Per ticket you can override it: <code>/ccorch:ticket ID quick</code> or{" "}
+          <code>/ccorch:ticket ID plan</code>.
+        </p>
         <div className="grid gap-3 sm:grid-cols-2">
           <Toggle
             label="Ask me to approve the plan"
@@ -128,8 +150,14 @@ export function RepoSettings(props: { repoId: number; meta: Meta; config: Config
             onChange={(v) => update((x) => void (x.workflow.review = v))}
           />
           <Toggle
-            label="Small tickets without subagents"
-            hint="Cheaper: implemented directly in the main session."
+            label="Review quick changes too"
+            hint="Off = quick-path changes go straight to the MR."
+            checked={c.workflow.review_quick}
+            onChange={(v) => update((x) => void (x.workflow.review_quick = v))}
+          />
+          <Toggle
+            label="Quick path in the main session"
+            hint="Cheaper: no subagent for changes that skip planning."
             checked={c.workflow.small_inline}
             onChange={(v) => update((x) => void (x.workflow.small_inline = v))}
           />

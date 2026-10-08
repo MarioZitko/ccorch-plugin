@@ -27,6 +27,10 @@ User docs: `README.md`. Why it exists (replaces the PySide6 app in `~/Projects/c
   strips `ANTHROPIC_API_KEY` so calls use the user's subscription. Code-changing work always runs
   in an interactive Claude Code session.
 - No worktrees. Never `--dangerously-skip-permissions`.
+- Plugin self-update (`plugin_update.py`) only drives the official `claude plugin` CLI
+  (`list --json`, `marketplace update`, `update`). After updating, the server starts the new
+  version's `server.py`, which asks the old one to exit (`/api/shutdown`, version check in
+  `main()`). Never copy plugin files around by hand.
 
 ## Compatibility
 

@@ -11,9 +11,10 @@ and it will:
 1. read the ticket (from the Inbox, pasted text, or your Jira/issue tool),
 2. create the branch **with a script** from the repo's naming template, e.g.
    `feature/PROJ-123-add-login`,
-3. plan the work with an Opus subagent - you approve the plan,
-4. implement it phase by phase with a Sonnet subagent. After each phase the repo's build and tests
-   run automatically, and Claude cannot finish while they fail,
+3. for bigger work, plan it with an Opus subagent - you approve the plan. Small changes and most
+   bug fixes skip planning and are done in one step (the **quick path**),
+4. implement it (phase by phase if planned). After each step the repo's build and tests run
+   automatically, and Claude cannot finish while they fail,
 5. commit each phase (`[PROJ-123] phase 1: …`), review the branch with an Opus subagent and fix
    what it finds,
 6. push and open the **GitLab merge request** (no API token needed).
@@ -29,6 +30,8 @@ transcripts into tickets.
 - **[uv](https://docs.astral.sh/uv/getting-started/installation/)** - runs the plugin's helper
   scripts and installs Python by itself. No other setup.
 - **git**, and a **GitLab** remote for the merge request step.
+- **Windows:** run the commands in PowerShell. Claude Code on Windows needs
+  [Git for Windows](https://git-scm.com/downloads/win) - the plugin's scripts run in its Git Bash.
 - No worktrees: ccorch works in your normal checkout, one ticket at a time per clone, starting from
   a clean working tree (nothing uncommitted).
 
@@ -86,9 +89,16 @@ Back in Claude Code:
 /ccorch:ticket PROJ-123 Add customer code to the invoice PDF. Acceptance: code shows under the customer name.
 ```
 
-It creates the branch, shows you the plan to approve, implements and tests each phase, reviews,
-and opens the merge request. Start with a small ticket. Add `auto` after the ticket id to skip the
-plan approval.
+It creates the branch, decides whether the ticket needs a plan, implements and tests it, reviews,
+and opens the merge request. Start with a small ticket.
+
+For a small fix you can skip planning explicitly:
+
+```
+/ccorch:ticket PROJ-124 quick Fix typo in the invoice footer
+```
+
+Use `plan` instead of `quick` to force a plan, and `auto` to skip asking you to approve the plan.
 
 ### 5. Optional: tickets from a meeting transcript
 
@@ -97,11 +107,33 @@ click **Extract tickets**. Edit the ticket cards, **Save to inbox**, then click
 **Open in Claude Code** on a ticket (or **Copy command** and paste `/ccorch:ticket T-001` into
 Claude yourself). See [Tickets from transcripts](#tickets-from-transcripts) below.
 
+## Updating ccorch
+
+**From the settings page (easiest):** run `/ccorch:manage`. The box at the top of the sidebar
+shows your ccorch version. Click **Check for updates**; if a newer version is on GitHub the button
+changes to **Update to x.y.z**. Click it - the settings page installs the update, restarts itself
+on the new version and reloads. The same box has an **Update** button for Claude Code itself.
+Afterwards, restart your open Claude Code sessions so they use the new version.
+
+**From a terminal:** run these (PowerShell on Windows, Terminal on macOS) from any folder:
+
+```bash
+claude plugin marketplace update ccorch-tools
+claude plugin update ccorch@ccorch-tools
+```
+
+The first command fetches the latest catalog from GitHub, the second installs the new version.
+Then **restart Claude Code** (close every open `claude` session and start it again). The next
+`/ccorch:manage` replaces a settings page that is still running from the old version - just reload
+the browser tab.
+
+Check which version you have with `claude plugin list`.
+
 ## Commands
 
 | In Claude Code | What it does |
 |---|---|
-| `/ccorch:ticket <ID> [auto] [text]` | The full workflow. `auto` skips plan approval. |
+| `/ccorch:ticket <ID> [quick\|plan] [auto] [text]` | The full workflow. `quick` = no planning, `plan` = always plan, `auto` = don't ask me to approve the plan. |
 | `/ccorch:mr [notes]` | Commit pending work (through the gate) and open the merge request. |
 | `/ccorch:manage` | Open the settings page. |
 
@@ -113,10 +145,14 @@ your context. To stop tracking a ticket without finishing it, ask Claude to run
 
 Open it with `/ccorch:manage`. It runs only on your computer (`127.0.0.1`).
 
-- **Sidebar** - your repos, their status (*installed*, *config only*, *not set up*) and any
-  running ticket; your Claude Code version with an **Update** button; **Marketplace** (see
+- **Sidebar** - your ccorch and Claude Code versions with update buttons (see
+  [Updating ccorch](#updating-ccorch)); your repos, their status (*installed*, *config only*,
+  *not set up*) and any running ticket; **Marketplace** (see
   [Sharing with your team](#sharing-with-your-team)).
-- **Settings tab** - everything ccorch does in that repo. **Review & install** writes:
+- **Settings tab** - everything ccorch does in that repo. Under **Workflow**, **Planning** decides
+  when to plan: *auto* (small changes skip planning - the default), *always* or *never*; and
+  **Review quick changes too** decides whether quick-path changes still get an AI review.
+  **Review & install** writes:
   - `.claude/ccorch.toml` - the repo's settings. Commit it so the team shares them.
   - `.claude/settings.json` - enables the plugin for the repo, so teammates who open it in Claude
     Code are asked to install ccorch (only once a marketplace URL is set).
@@ -137,8 +173,9 @@ Open it with `/ccorch:manage`. It runs only on your computer (`127.0.0.1`).
 3. Review and edit the cards (id, type, size, title, description, acceptance criteria), remove
    what you don't want, then **Save to inbox**. Tickets without an id get `T-001`, `T-002`, …
    (change the prefix per repo under *Tickets from transcripts* in the Settings tab).
-4. Start a ticket with **Open in Claude Code** (opens a terminal in the repo running
-   `/ccorch:ticket T-001`) or copy the command. The ticket skill reads the full ticket from the
+4. Pick how to start it in the dropdown - *auto* (uses the repo's Planning setting and the
+   ticket's size), *quick (no plan)* or *with plan* - then **Open in Claude Code** (opens a terminal
+   in the repo running `/ccorch:ticket T-001`) or copy the command. The ticket skill reads the full ticket from the
    inbox. Inbox tickets are stored in `.git/ccorch/inbox/` and never committed.
 
 Short one-shot steps like this run in the background and show their result in the settings page.
@@ -159,8 +196,8 @@ with the two commands from [step 2](#2-install-the-plugin).
 
 - The commands only run when you type them, so the plugin adds almost nothing to sessions where
   you don't use it.
-- Small tickets are done directly in the main session, without subagents (setting:
-  *Small tickets without subagents*).
+- Small changes skip planning (the quick path) and are done directly in the main session, without
+  subagents (settings: *Planning* and *Quick path in the main session*).
 - Each phase runs in a fresh subagent with only the ticket, the plan summary, its own phase and
   short notes from earlier phases, so the main session stays small.
 - The build/test result is cached by the exact state of the files, so nothing is rebuilt twice.
@@ -207,7 +244,8 @@ cd manager-web && npm install && npm run build
 ```
 
 To ship an update, bump `version` in `plugins/ccorch/.claude-plugin/plugin.json`, commit and
-push. Users get it with `claude plugin update ccorch@ccorch-tools` and a Claude Code restart.
+push. Users get it as described in [Updating ccorch](#updating-ccorch). Claude Code only
+installs a new version when `version` changes.
 
 ### Layout
 

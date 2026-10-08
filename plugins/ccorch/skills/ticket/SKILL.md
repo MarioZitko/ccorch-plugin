@@ -1,15 +1,19 @@
 ---
 name: ticket
-description: Take a ticket from id to GitLab merge request - named branch, plan, phased implementation with a build/test gate, review, MR.
+description: Take a ticket from id to GitLab merge request - named branch, plan (or a quick no-plan path for small fixes), implementation with a build/test gate, review, MR.
 disable-model-invocation: true
-argument-hint: <TICKET-ID> [auto] [ticket text...]
+argument-hint: <TICKET-ID> [quick|plan] [auto] [ticket text...]
 allowed-tools: Bash(ccorch *), Bash(git status*), Bash(git diff*), Bash(git log*)
 ---
 
 # Ticket → merge request
 
-Arguments: `$ARGUMENTS` - the first word is the ticket id. `auto` anywhere means: skip plan
-approval. Any other text is the ticket content.
+Arguments: `$ARGUMENTS` - the first word is the ticket id. Flags anywhere after it:
+- `quick` - small change: no planning, implement directly (step 3).
+- `plan` - always plan, even if it looks small.
+- `auto` - don't stop to ask me to approve the plan.
+
+Any other text is the ticket content.
 
 You orchestrate; subagents do the heavy reading and coding. Keep this main session lean: do not
 read source files yourself unless you are doing a small ticket inline.
@@ -37,14 +41,32 @@ Run `ccorch start --id <ID> --type <type> --title "<short title>"`. It names the
 repo's template, fetches and branches from the base. Never create or switch branches with git
 yourself. If it fails (dirty tree, branch exists, bad config), show the error and stop.
 
-## 3. Size
+## 3. Plan or quick?
 
-**small**: one coherent change, a handful of files, no design decisions. Otherwise **big**.
-When in doubt, big.
+Decide in this order (the first rule that applies wins):
 
-- small and `small_inline=True`: implement it yourself in this session, keeping the change
-  focused, then `ccorch commit --note "<1-2 line handoff>"` and go to step 6.
-- otherwise: step 4.
+1. `quick` was passed → **quick**. `plan` was passed → **plan**.
+2. `planning=never` → **quick**. `planning=always` → **plan**.
+3. `planning=auto`: the inbox ticket's size (`looks small` / `looks big`) if there is one,
+   otherwise your own judgement: **small** = one coherent change in a handful of files with no
+   design decisions (most bug fixes, copy/config changes, small UI tweaks) → **quick**;
+   anything else → **plan**. When unsure, plan.
+
+Say in one line which path you chose and why (e.g. "Quick path: one-file bug fix").
+
+**Quick path** - no planner, one change, one commit:
+- `small_inline=True`: implement it yourself in this session. Read only the files you need and
+  keep the change focused.
+- `small_inline=False`: delegate to `ccorch:implementer` (model: implementer) with the ticket
+  as a single phase.
+- Then run `ccorch commit --note "<1-2 line handoff>"` (uses the single-change commit message;
+  it runs the build/test gate first - on failure fix it, at most twice, then `ccorch hold`,
+  report and stop).
+- If the change turns out bigger than expected (design decisions, many files), stop, say so,
+  and continue with step 4 instead - keep what you already changed.
+- Then go to step 6.
+
+**Plan path** - step 4.
 
 ## 4. Plan
 
@@ -72,7 +94,7 @@ For each phase *i* in order:
 
 ## 6. Review
 
-Skip if `review=False`. Otherwise delegate to `ccorch:reviewer` (model: reviewer) with the
+Skip if `review=False`, or if this was the quick path and `review_quick=False`. Otherwise delegate to `ccorch:reviewer` (model: reviewer) with the
 ticket and the plan SUMMARY (or "single-phase change" for small tickets).
 
 - Blocking findings = high and medium. If none: go to step 7.

@@ -1,4 +1,6 @@
 export type TicketType = "feature" | "bug" | "task";
+/** "" = let the workflow decide (repo's planning setting + ticket size). */
+export type StartMode = "" | "quick" | "plan";
 
 export interface Config {
   repo: { base_branch: string; remote: string };
@@ -16,8 +18,10 @@ export interface Config {
     assignee: string;
   };
   workflow: {
+    planning: "auto" | "always" | "never";
     plan_approval: boolean;
     review: boolean;
+    review_quick: boolean;
     max_fix_iterations: number;
     small_inline: boolean;
   };
@@ -46,6 +50,20 @@ export interface IntakeResult {
   cost_usd: number;
   duration_ms: number;
   model: string;
+}
+
+export interface PluginInfo {
+  running_version: string;
+  running_from: string;
+  dev_checkout: boolean;
+  installed: boolean;
+  plugin_id: string | null;
+  installed_version: string | null;
+  marketplace: string | null;
+  available_version: string | null;
+  update_available: boolean;
+  output?: string;
+  relaunching?: boolean;
 }
 
 export interface ClaudeInfo {
@@ -179,6 +197,10 @@ export const api = {
       ticket_id,
       title,
     }),
+  meta2: () => call<{ version: string }>("GET", "/api/meta"),
+  pluginInfo: () => call<PluginInfo>("GET", "/api/plugin"),
+  pluginCheck: () => call<PluginInfo>("POST", "/api/plugin/check"),
+  pluginUpdate: () => call<PluginInfo>("POST", "/api/plugin/update"),
   claudeInfo: () => call<ClaudeInfo>("GET", "/api/claude"),
   claudeUpdate: () => call<{ output: string; version: string }>("POST", "/api/claude/update"),
   intake: (id: number, text: string) =>
@@ -188,13 +210,16 @@ export const api = {
     call<{ saved: string[] }>("POST", `/api/repos/${id}/inbox`, { tickets }),
   deleteInbox: (id: number, tid: string) =>
     call<{ deleted: boolean }>("DELETE", `/api/repos/${id}/inbox/${encodeURIComponent(tid)}`),
-  inboxCommand: (id: number, tid: string) =>
+  inboxCommand: (id: number, tid: string, mode: StartMode) =>
     call<{ slash: string; shell: string }>(
       "GET",
-      `/api/repos/${id}/inbox/${encodeURIComponent(tid)}/command`,
+      `/api/repos/${id}/inbox/${encodeURIComponent(tid)}/command?mode=${mode}`,
     ),
-  launch: (id: number, tid: string) =>
-    call<{ launched: boolean }>("POST", `/api/repos/${id}/inbox/${encodeURIComponent(tid)}/launch`),
+  launch: (id: number, tid: string, mode: StartMode) =>
+    call<{ launched: boolean }>(
+      "POST",
+      `/api/repos/${id}/inbox/${encodeURIComponent(tid)}/launch?mode=${mode}`,
+    ),
   browse: (path: string) =>
     call<DirListing>("GET", `/api/fs?path=${encodeURIComponent(path)}`),
 };

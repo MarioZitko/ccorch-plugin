@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, type InboxTicket, type IntakeResult, type TicketDraft, type TicketType } from "../api";
+import {
+  api,
+  type InboxTicket,
+  type IntakeResult,
+  type StartMode,
+  type TicketDraft,
+  type TicketType,
+} from "../api";
 import { Badge, Select, TextInput } from "./ui";
 
 const TYPES: TicketType[] = ["feature", "bug", "task"];
@@ -44,9 +51,10 @@ function DraftCard(props: {
 function QueuedCard(props: { repoId: number; t: InboxTicket; onChanged: () => void; notify: (m: string, err?: boolean) => void }) {
   const { t, repoId } = props;
   const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<StartMode>("");
 
   const copy = async (shell: boolean) => {
-    const cmd = await api.inboxCommand(repoId, t.id);
+    const cmd = await api.inboxCommand(repoId, t.id, mode);
     await navigator.clipboard.writeText(shell ? cmd.shell : cmd.slash);
     props.notify(shell ? "Terminal command copied" : `Copied: ${cmd.slash}`);
   };
@@ -58,14 +66,25 @@ function QueuedCard(props: { repoId: number; t: InboxTicket; onChanged: () => vo
         <Badge tone={t.type === "bug" ? "amber" : "indigo"}>{t.type}</Badge>
         <Badge tone="zinc">{t.size}</Badge>
         {t.status === "started" ? <Badge tone="green">started</Badge> : <Badge tone="zinc">queued</Badge>}
-        <div className="ml-auto flex gap-1.5">
+        <div className="ml-auto flex gap-1.5 whitespace-nowrap">
+          <select
+            className="input py-1 text-xs"
+            style={{ width: "auto" }}
+            title="How to start: let the workflow decide, skip planning, or always plan"
+            value={mode}
+            onChange={(e) => setMode(e.target.value as StartMode)}
+          >
+            <option value="">auto (looks {t.size})</option>
+            <option value="quick">quick (no plan)</option>
+            <option value="plan">with plan</option>
+          </select>
           <button
             type="button"
             className="btn btn-primary py-1 text-xs"
             title="Opens a terminal in the repo running Claude Code with /ccorch:ticket"
             onClick={() =>
               api
-                .launch(repoId, t.id)
+                .launch(repoId, t.id, mode)
                 .then(() => props.notify("Opening Claude Code in a new terminal…"))
                 .catch((e: Error) => props.notify(e.message, true))
             }

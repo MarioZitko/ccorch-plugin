@@ -17,7 +17,9 @@ class TerminalError(RuntimeError):
 
 def plugin_installed() -> bool:
     """True when this copy runs from Claude Code's plugin cache (not a dev checkout)."""
-    return (Path.home() / ".claude" / "plugins") in PLUGIN_ROOT.parents
+    from ccorch_lib.plugin_update import running_from_cache
+
+    return running_from_cache(PLUGIN_ROOT)
 
 
 def claude_argv(exe: str, prompt: str) -> list[str]:

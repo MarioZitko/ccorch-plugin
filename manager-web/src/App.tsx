@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   api,
-  type ClaudeInfo,
   type Config,
   type Meta,
   type Plan,
@@ -10,6 +9,7 @@ import {
 } from "./api";
 import { ActivityView } from "./components/ActivityView";
 import { InboxView } from "./components/InboxView";
+import { VersionsBox } from "./components/VersionsBox";
 import { AddRepoModal, MarketplaceModal } from "./components/Dialogs";
 import { InstallModal } from "./components/InstallModal";
 import { RepoSettings } from "./components/RepoSettings";
@@ -27,8 +27,7 @@ export default function App() {
   const [repos, setRepos] = useState<RepoSummary[]>([]);
   const [selected, setSelected] = useState<number | null>(null);
   const [tab, setTab] = useState<"settings" | "inbox" | "activity">("settings");
-  const [cli, setCli] = useState<ClaudeInfo | null>(null);
-  const [updating, setUpdating] = useState(false);
+
   const [loaded, setLoaded] = useState<RepoConfig | null>(null);
   const [draft, setDraft] = useState<Config | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
@@ -46,21 +45,8 @@ export default function App() {
   useEffect(() => {
     api.meta().then(setMeta).catch((e: Error) => notify(e.message, "err"));
     refreshRepos().catch((e: Error) => notify(e.message, "err"));
-    api.claudeInfo().then(setCli).catch(() => undefined);
   }, [refreshRepos]);
 
-  const updateClaude = async () => {
-    setUpdating(true);
-    try {
-      const r = await api.claudeUpdate();
-      notify(r.output.split("\n").slice(-1)[0] || `Claude Code ${r.version}`);
-      setCli(await api.claudeInfo());
-    } catch (e) {
-      notify((e as Error).message, "err");
-    } finally {
-      setUpdating(false);
-    }
-  };
 
   useEffect(() => {
     if (selected === null && repos.length) setSelected(repos[0].id);
@@ -148,22 +134,7 @@ export default function App() {
         <div className="border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
           <div className="text-sm font-semibold">ccorch manager</div>
           <div className="text-xs text-zinc-500">Per-repo settings for /ccorch:ticket</div>
-          <div className="mt-2 flex items-center justify-between gap-2 text-xs">
-            <span className="truncate text-zinc-500" title={cli?.path ?? ""}>
-              {cli === null ? "Claude Code: …" : cli.path ? `Claude Code ${cli.version}` : "Claude Code not found"}
-            </span>
-            {cli?.path && (
-              <button type="button" className="btn px-2 py-0.5 text-xs" disabled={updating} onClick={updateClaude}>
-                {updating ? "Updating…" : "Update"}
-              </button>
-            )}
-          </div>
-          {cli?.api_key_env && (
-            <p className="mt-2 rounded bg-amber-50 p-2 text-[11px] text-amber-900 dark:bg-amber-950/50 dark:text-amber-200">
-              ANTHROPIC_API_KEY is set in this environment. The manager removes it for its own calls so
-              they use your subscription, but Claude Code started elsewhere would bill the API key.
-            </p>
-          )}
+          <VersionsBox notify={(m, err) => notify(m, err ? "err" : "ok")} />
         </div>
         <nav className="flex-1 overflow-auto p-2">
           {repos.map((r) => (

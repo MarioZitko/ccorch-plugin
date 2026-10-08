@@ -88,3 +88,10 @@ def test_gate_runs_commands(client: TestClient, repo: Path) -> None:
 def test_browse_lists_git_dirs(client: TestClient, repo: Path) -> None:
     listing = client.get("/api/fs", params={"path": str(repo.parent)}).json()
     assert any(e["name"] == "work" and e["is_git"] for e in listing["entries"])
+
+
+def test_meta_reports_plugin_version(client: TestClient) -> None:
+    from server import VERSION
+
+    assert client.get("/api/meta").json()["version"] == VERSION != "dev"
+    assert client.post("/api/shutdown").status_code == 403  # needs the X-CCorch header
