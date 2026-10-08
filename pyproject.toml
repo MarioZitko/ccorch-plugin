@@ -1,0 +1,39 @@
+[project]
+name = "ccorch-plugin-dev"
+version = "0.1.0"
+description = "Dev tooling for the ccorch Claude Code plugin (the plugin itself needs only uv)"
+requires-python = ">=3.12"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "httpx>=0.27",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["plugins/ccorch/scripts", "plugins/ccorch/manager"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["plugins/ccorch/scripts", "plugins/ccorch/manager"]
+extend-exclude = ["manager-web", "plugins/ccorch/manager/static"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+mypy_path = ["plugins/ccorch/scripts", "plugins/ccorch/manager"]
+explicit_package_bases = true
+files = ["plugins/ccorch/scripts/ccorch_lib", "plugins/ccorch/manager/server.py"]

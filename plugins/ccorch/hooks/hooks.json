@@ -1,0 +1,28 @@
+{
+  "description": "ccorch build/test gate: while a ticket is active and the tree has uncommitted changes, Claude (or the implementer subagent) cannot finish until build + tests pass.",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --quiet --no-project --script \"${CLAUDE_PLUGIN_ROOT}/scripts/ccorch.py\" hook stop",
+            "timeout": 1800
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "^ccorch:implementer$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --quiet --no-project --script \"${CLAUDE_PLUGIN_ROOT}/scripts/ccorch.py\" hook stop",
+            "timeout": 1800
+          }
+        ]
+      }
+    ]
+  }
+}

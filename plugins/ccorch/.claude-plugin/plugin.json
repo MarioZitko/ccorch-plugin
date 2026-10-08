@@ -1,0 +1,15 @@
+{
+  "name": "ccorch",
+  "version": "0.1.0",
+  "description": "Ticket -> named branch -> plan -> phased implementation with a build/test gate -> review -> GitLab MR. Per-repo settings in .claude/ccorch.toml.",
+  "author": {
+    "name": "Mario Zitko"
+  },
+  "license": "UNLICENSED",
+  "keywords": [
+    "gitlab",
+    "merge-request",
+    "workflow",
+    "tickets"
+  ]
+}

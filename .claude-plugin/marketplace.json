@@ -1,0 +1,16 @@
+{
+  "name": "ccorch-tools",
+  "owner": {
+    "name": "Mario Zitko"
+  },
+  "metadata": {
+    "description": "ccorch: ticket-to-merge-request workflow for Claude Code"
+  },
+  "plugins": [
+    {
+      "name": "ccorch",
+      "source": "./plugins/ccorch",
+      "description": "Ticket -> branch -> plan -> gated phases -> review -> GitLab MR"
+    }
+  ]
+}

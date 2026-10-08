@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# `ccorch` on the Bash tool's PATH while the plugin is enabled. Needs `uv` (installs Python itself).
+exec uv run --quiet --no-project --script "$(dirname "${BASH_SOURCE[0]}")/../scripts/ccorch.py" "$@"
