@@ -69,10 +69,23 @@ DEFAULTS: dict[str, Any] = {
         "reviewer": "opus",
         "reviewer_small": "sonnet",
     },
+    "jira": {
+        "enabled": False,
+        "url": "",
+        "deployment": "cloud",
+        "project_key": "",
+        "create_issues": False,
+        "comment_mr_link": True,
+        "issue_types": {"feature": "Story", "bug": "Bug", "task": "Task"},
+        "move_to": {"start": "In Progress", "mr_opened": "In Review", "abandoned": ""},
+    },
 }
 
 MODEL_ROLES = ("intake", "planner", "implementer", "reviewer", "reviewer_small")
 PLANNING_CHOICES = ("auto", "always", "never")
+JIRA_DEPLOYMENTS = ("cloud", "server")
+JIRA_EVENTS = ("start", "mr_opened", "abandoned")
+_JIRA_PROJECT = re.compile(r"^[A-Z][A-Z0-9_]{0,19}$")
 _ID_PREFIX = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,15}$")
 
 _PLACEHOLDER = re.compile(r"\{([^{}]*)\}")
@@ -224,8 +237,46 @@ def validate(cfg: dict[str, Any]) -> None:
         errors,
     )
 
+    _validate_jira(cfg["jira"], errors)
+
     if errors:
         raise ConfigError("; ".join(errors))
+
+
+def _validate_jira(jira: dict[str, Any], errors: list[str]) -> None:
+    for key in ("enabled", "create_issues", "comment_mr_link"):
+        _expect(isinstance(jira[key], bool), f"jira.{key} must be true/false", errors)
+    for key in ("url", "deployment", "project_key"):
+        _expect(isinstance(jira[key], str), f"jira.{key} must be a string", errors)
+    for table, keys in (("issue_types", TICKET_TYPES), ("move_to", JIRA_EVENTS)):
+        values = jira[table]
+        if not isinstance(values, dict):
+            errors.append(f"jira.{table} must be a table")
+            continue
+        for k in keys:
+            _expect(isinstance(values.get(k), str), f"jira.{table}.{k} must be a string", errors)
+    if isinstance(jira["issue_types"], dict):
+        for t in TICKET_TYPES:
+            if jira["issue_types"].get(t) == "":
+                errors.append(f"jira.issue_types.{t} must not be empty")
+    if jira["enabled"] is not True:
+        return
+    url, project = jira["url"], jira["project_key"]
+    _expect(
+        isinstance(url, str) and url.startswith(("http://", "https://")),
+        "jira.url must start with http:// or https://",
+        errors,
+    )
+    _expect(
+        isinstance(project, str) and bool(_JIRA_PROJECT.match(project)),
+        "jira.project_key must look like PROJ (capital letters, digits, _)",
+        errors,
+    )
+    _expect(
+        jira["deployment"] in JIRA_DEPLOYMENTS,
+        f"jira.deployment must be one of {JIRA_DEPLOYMENTS}",
+        errors,
+    )
 
 
 def mr_target(cfg: dict[str, Any]) -> str:

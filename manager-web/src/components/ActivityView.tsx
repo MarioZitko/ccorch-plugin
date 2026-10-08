@@ -21,6 +21,7 @@ function TicketCard({ t, live }: { t: TicketRecord; live?: boolean }) {
         <span>{t.commits.length} commits</span>
         <span>{t.phases_done} phases</span>
         <span>{t.fix_iterations} fix rounds</span>
+        {t.jira_key && <span className="font-mono">Jira {t.jira_key}</span>}
         {t.mr_url && (
           <a className="text-indigo-600 hover:underline" href={t.mr_url} target="_blank" rel="noreferrer">
             merge request ↗

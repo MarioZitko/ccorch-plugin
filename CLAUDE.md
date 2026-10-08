@@ -29,6 +29,7 @@ into tickets and updates the plugin.
 | Transcript → tickets (one tool-less headless call, JSON schema) | `ccorch_lib/intake.py`, `ccorch_lib/claude.py` |
 | Detect repo defaults; plan/apply install (toml, settings.json merge, .gitignore) | `ccorch_lib/install.py` |
 | Open a terminal running `claude "/ccorch:ticket ID"` (macOS/Windows/Linux) | `ccorch_lib/terminal.py` |
+| Jira client, credentials (`~/.ccorch/credentials.json` / env), issue ↔ ticket text | `ccorch_lib/jira.py`, `ccorch_lib/home.py` (`ccorch_home()`); events in `cli._jira_event`; `ccorch jira`; UI `JiraSection.tsx`; fake server `tests/fake_jira.py` |
 | Plugin version check + update via `claude plugin` CLI | `ccorch_lib/plugin_update.py` |
 | Settings page backend (FastAPI, all `/api/*`) + self-replace on version change | `plugins/ccorch/manager/server.py` |
 | Settings page UI (React): `App.tsx`, `RepoSettings`, `InboxView`, `ActivityView`, `InstallModal`, `Dialogs`, `VersionsBox`, `ui.tsx`, `api.ts` | `manager-web/src/` → built into `plugins/ccorch/manager/static/` |
@@ -56,6 +57,9 @@ into tickets and updates the plugin.
 - Plugin self-update only drives the official CLI (`claude plugin list --json`,
   `marketplace update`, `update`). After updating, the server starts the new version's
   `server.py`, which asks the old one to exit (`/api/shutdown`, version check in `main()`).
+- Jira credentials live in `~/.ccorch/credentials.json` (0600) or `CCORCH_JIRA_TOKEN`/`_EMAIL`,
+  never in the repo or the plugin dir, and never in output or errors. Jira failures are
+  warnings (`_jira_event`), never a failed command or blocked session.
 - Settings server: binds 127.0.0.1; every mutating request needs header `X-CCorch: 1` and a
   local Host header (middleware `guard`). Keep that for new endpoints.
 
@@ -118,6 +122,8 @@ then restart Claude Code.
 - A full `/ccorch:ticket` run in a real, signed-in Claude Code session (skill instructions,
   plan/quick decision, subagent hand-offs, hook behaviour inside a live session).
 - A real GitLab push creating an MR (tests use a bare repo that accepts push options).
+- Everything Jira against a real Jira Cloud and a real Server/Data Center (tests only use
+  `tests/fake_jira.py`): auth, v2 plain-text descriptions on Cloud, `search/jql`, workflow moves.
 - Anything on Windows: hook execution, `bin/ccorch`, **Open in Claude Code** (`wt`/`cmd`).
 - **Open in Claude Code** on macOS was not clicked (it opens Terminal via `osascript`).
 

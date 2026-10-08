@@ -30,10 +30,10 @@ Run `ccorch context`.
 
 ## 1. Ticket
 
-Run `ccorch inbox show <ID>`. If it prints a ticket (created from a transcript in the manager UI),
-use it - including its type and title. Otherwise, if ticket text was passed, use that. Otherwise,
-if a Jira/issue tracker tool is available, fetch the ticket by id. Otherwise ask the user to paste
-title, description and acceptance criteria.
+Run `ccorch inbox show <ID>`. It finds the ticket in the inbox or, for Jira keys, in Jira, and
+prints it (including its type and title). If it prints nothing useful, use the ticket text that was
+passed, or another issue tracker tool if one is available; otherwise ask the user to paste title,
+description and acceptance criteria.
 Decide the type: `feature`, `bug` or `task`, and a short title (under ~8 words).
 
 ## 2. Branch
@@ -113,7 +113,7 @@ Run `ccorch mr --description "<2-4 sentences: what changed and why, notable deci
 It pushes the branch and opens the MR with the repo's MR rules (target, labels, draft, ...).
 
 Finish with a short report: MR link, branch, commits, low-severity findings left, anything the
-reviewer or implementer flagged as open.
+reviewer or implementer flagged as open, and any `Jira:` lines `ccorch` printed.
 
 ## Rules
 
@@ -122,4 +122,6 @@ reviewer or implementer flagged as open.
 - Before you ask the user anything while there are uncommitted changes, run `ccorch hold`; run
   `ccorch resume` once they answer. (Otherwise the gate hook keeps you working.)
 - If a step fails twice, stop and summarise instead of looping.
+- Never move or edit Jira issues with other tools; `ccorch` does it (start, MR, abandon). If
+  `ccorch` prints a `Jira warning`, mention it in your report and carry on.
 - To abandon: `ccorch finish --outcome abandoned` (the branch stays).

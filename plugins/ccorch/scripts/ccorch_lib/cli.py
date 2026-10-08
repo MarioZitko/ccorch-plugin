@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from ccorch_lib import branch, config, gate, install, mr
+from ccorch_lib import branch, config, gate, install, jira, mr
 from ccorch_lib.git import Git, GitError, find_root
 from ccorch_lib.inbox import Inbox, to_markdown
 from ccorch_lib.state import StateStore, TicketState
@@ -95,6 +95,49 @@ def _fmt(template: str, state: TicketState, **extra: Any) -> str:
     return template.format(**values)
 
 
+def _jira_event(ctx: Ctx, state: TicketState, event: str, comment: str | None = None) -> None:
+    """Best-effort Jira move/comment for a workflow event. Never raises, never changes exit code."""
+    try:
+        jc = ctx.cfg["jira"]
+        if not jc["enabled"] or not state.jira_key:
+            return
+        target = jc["move_to"].get(event, "")
+        if not target and not comment:
+            return
+        client = jira.client_for(ctx.cfg)
+        if client is None:
+            print("Jira warning: no login found (set it on the settings page or CCORCH_JIRA_TOKEN)")
+            return
+        key = state.jira_key
+        if target:
+            result = client.move(key, target)
+            if result == "moved":
+                print(f"Jira: {key} -> {target}")
+            elif result == "already":
+                print(f"Jira: {key} already {target}")
+            else:
+                print(f"Jira warning: no transition to {target!r} from the current status of {key}")
+        if comment:
+            client.comment(key, comment)
+    except Exception as exc:  # Jira trouble must never break the workflow
+        print(f"Jira warning: {exc}")
+
+
+def _fetch_jira_ticket(ctx: Ctx, inbox: Inbox, key: str) -> dict[str, Any] | None:
+    """Fetch an issue into the inbox. Prints the reason and returns None on any failure."""
+    try:
+        client = jira.client_for(ctx.cfg)
+        if client is None:
+            print(f"Jira: no login found, cannot fetch {key} (settings page > Your Jira login)")
+            return None
+        ticket = jira.parse_issue(ctx.cfg, client.get_issue(key))
+        inbox.add([ticket], source="jira")
+        return inbox.get(key)
+    except Exception as exc:
+        print(f"Jira: cannot fetch {key}: {exc}")
+        return None
+
+
 # --- commands -----------------------------------------------------------------------------
 
 
@@ -137,6 +180,10 @@ def cmd_context(args: argparse.Namespace) -> int:
         f"(quick path or <= {wf['small_review_max_lines']} changed lines); "
         "run `ccorch review-model` to get the model to use"
     )
+    jc = cfg["jira"]
+    if jc["enabled"]:
+        creds = "ok" if jira.load_creds(jc["url"]) else "missing"
+        print(f"- Jira: {jc['project_key']} on {jc['url']} (credentials: {creds})")
     if state:
         print(
             f'- ACTIVE TICKET: {state.ticket_id} ({state.type}) "{state.title}" on '
@@ -180,9 +227,15 @@ def cmd_start(args: argparse.Namespace) -> int:
         ctx.git.fetch()
     ctx.git.create_branch(base, name)
     state = TicketState(ticket_id=args.id, type=args.type, title=args.title, branch=name, base=base)
+    inbox = Inbox(ctx.store)
+    record = inbox.get(args.id)
+    state.jira_key = (record or {}).get("jira_key") or (
+        args.id if jira.is_jira_key(ctx.cfg, args.id) else None
+    )
     ctx.store.save(state)
-    Inbox(ctx.store).mark_started(args.id, name)
+    inbox.mark_started(args.id, name)
     print(f"Created branch {name} from {ctx.git.base_ref(base)}")
+    _jira_event(ctx, state, "start")
     return 0
 
 
@@ -310,6 +363,12 @@ def cmd_mr(args: argparse.Namespace) -> int:
     else:
         print("Pushed, but no MR link found in the push output (is the remote GitLab?).")
         print(gate.tail(result.output, 20))
+    comment = (
+        f"Merge request: {result.mr_url}"
+        if result.mr_url and ctx.cfg["jira"]["comment_mr_link"]
+        else None
+    )
+    _jira_event(ctx, state, "mr_opened", comment)
     return 0
 
 
@@ -321,6 +380,8 @@ def cmd_finish(args: argparse.Namespace) -> int:
         return 0
     ctx.store.finish(state, args.outcome)
     print(f"Ticket {state.ticket_id} finished ({args.outcome}).")
+    if args.outcome in config.JIRA_EVENTS:
+        _jira_event(ctx, state, args.outcome)
     return 0
 
 
@@ -329,16 +390,54 @@ def cmd_inbox(args: argparse.Namespace) -> int:
     inbox = Inbox(ctx.store)
     if args.action == "show":
         item = inbox.get(args.id or "")
+        if item is None and jira.is_jira_key(ctx.cfg, args.id or ""):
+            item = _fetch_jira_ticket(ctx, inbox, args.id or "")
+            if item is None:
+                return 1
         if item is None:
             print(f"No ticket {args.id!r} in the inbox.")
             return 1
         print(to_markdown(item))
+        if item.get("jira_url"):
+            print(f"\nJira: {item['jira_url']} (status: {item.get('jira_status', '?')})")
         return 0
     items = inbox.items()
     if not items:
         print("Inbox is empty.")
     for t in items:
         print(f"{t['id']:<14} {t['status']:<8} {t['type']:<8} {t['title']}")
+    return 0
+
+
+def cmd_jira(args: argparse.Namespace) -> int:
+    ctx = Ctx(Path.cwd())
+    if not ctx.cfg["jira"]["enabled"]:
+        raise CliError("Jira is not enabled in .claude/ccorch.toml ([jira] enabled = true)")
+    client = jira.client_for(ctx.cfg)
+    if client is None:
+        raise CliError(
+            "no Jira login found (settings page > Your Jira login, or CCORCH_JIRA_TOKEN)"
+        )
+    key = args.key
+    if key is None:
+        state = ctx.store.active()
+        key = state.jira_key if state else None
+    if not key:
+        raise CliError("no Jira key given and the active ticket has none")
+    try:
+        if args.action == "move":
+            if not args.status:
+                raise CliError("usage: ccorch jira move KEY STATUS")
+            result = client.move(key, args.status)
+            print(f"Jira: {key} {result} ({args.status})")
+            return 0 if result != "no_transition" else 1
+        issue = client.get_issue(key)
+        if args.action == "show":
+            print(to_markdown(jira.parse_issue(ctx.cfg, issue)))
+        print(f"Jira: {issue.url} (status: {issue.status})")
+    except jira.JiraError as exc:
+        print(f"Jira: {exc}")
+        return 1
     return 0
 
 
@@ -538,6 +637,12 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("action", choices=["list", "show"])
     sp.add_argument("id", nargs="?")
     sp.set_defaults(fn=cmd_inbox)
+
+    sp = sub.add_parser("jira", help="show or move a Jira issue")
+    sp.add_argument("action", choices=["status", "show", "move"])
+    sp.add_argument("key", nargs="?")
+    sp.add_argument("status", nargs="?", help="target status for `move`")
+    sp.set_defaults(fn=cmd_jira)
 
     sp = sub.add_parser("init", help="create .claude/ccorch.toml with detected defaults")
     sp.add_argument("--write", action="store_true")

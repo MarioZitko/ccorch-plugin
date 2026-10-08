@@ -28,6 +28,38 @@ export interface Config {
   };
   intake: { id_prefix: string };
   models: { intake: string; planner: string; implementer: string; reviewer: string; reviewer_small: string };
+  jira: {
+    enabled: boolean;
+    url: string;
+    deployment: "cloud" | "server";
+    project_key: string;
+    create_issues: boolean;
+    comment_mr_link: boolean;
+    issue_types: Record<TicketType, string>;
+    move_to: { start: string; mr_opened: string; abandoned: string };
+  };
+}
+
+export interface JiraCreds {
+  has_token: boolean;
+  email: string;
+  from_env: boolean;
+}
+
+export interface JiraTest {
+  ok: boolean;
+  user: string;
+  project_name: string;
+  issue_types: string[];
+  statuses: string[];
+  problems: string[];
+}
+
+export interface JiraIssueInfo {
+  key: string;
+  status: string;
+  url: string;
+  targets: string[];
 }
 
 export interface TicketDraft {
@@ -43,6 +75,9 @@ export interface InboxTicket extends TicketDraft {
   status: "queued" | "started";
   created_at: string;
   branch?: string;
+  jira_key?: string;
+  jira_url?: string;
+  jira_status?: string;
 }
 
 export interface IntakeResult {
@@ -140,6 +175,7 @@ export interface TicketRecord {
   fix_iterations: number;
   commits: string[];
   mr_url: string | null;
+  jira_key?: string | null;
   notes: string[];
 }
 
@@ -207,8 +243,24 @@ export const api = {
   intake: (id: number, text: string) =>
     call<IntakeResult>("POST", `/api/repos/${id}/intake`, { text }),
   inbox: (id: number) => call<InboxTicket[]>("GET", `/api/repos/${id}/inbox`),
-  saveInbox: (id: number, tickets: TicketDraft[]) =>
-    call<{ saved: string[] }>("POST", `/api/repos/${id}/inbox`, { tickets }),
+  saveInbox: (id: number, tickets: TicketDraft[], create_in_jira = false) =>
+    call<{ saved: string[]; failed?: { draft: TicketDraft; error: string }[] }>(
+      "POST",
+      `/api/repos/${id}/inbox`,
+      { tickets, create_in_jira },
+    ),
+  jiraCreds: (url: string) =>
+    call<JiraCreds>("GET", `/api/jira/credentials?url=${encodeURIComponent(url)}`),
+  saveJiraCreds: (url: string, email: string, token: string) =>
+    call<JiraCreds>("PUT", "/api/jira/credentials", { url, email, token }),
+  jiraTest: (id: number, config: Config) =>
+    call<JiraTest>("POST", `/api/repos/${id}/jira/test`, { config }),
+  jiraIssue: (id: number, key: string) =>
+    call<JiraIssueInfo>("GET", `/api/repos/${id}/jira/issue/${encodeURIComponent(key)}`),
+  jiraMove: (id: number, key: string, status: string) =>
+    call<{ result: string }>("POST", `/api/repos/${id}/jira/issue/${encodeURIComponent(key)}/move`, {
+      status,
+    }),
   deleteInbox: (id: number, tid: string) =>
     call<{ deleted: boolean }>("DELETE", `/api/repos/${id}/inbox/${encodeURIComponent(tid)}`),
   inboxCommand: (id: number, tid: string, mode: StartMode) =>

@@ -211,6 +211,7 @@ export default function App() {
                   <InboxView
                     repoId={repo.id}
                     intakeModel={loaded?.config.models.intake ?? "haiku"}
+                    jira={loaded?.config.jira}
                     notify={(m, err) => notify(m, err ? "err" : "ok")}
                   />
                 ) : draft && loaded ? (

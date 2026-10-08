@@ -38,10 +38,12 @@ from ccorch_lib import (  # noqa: E402
     gate,
     install,
     intake,
+    jira,
     plugin_update,
     terminal,
 )
 from ccorch_lib.git import Git, GitError, find_root  # noqa: E402
+from ccorch_lib.home import ccorch_home  # noqa: E402
 from ccorch_lib.inbox import Inbox, InboxError  # noqa: E402
 from ccorch_lib.state import StateStore  # noqa: E402
 
@@ -54,9 +56,7 @@ LOCAL_HOSTS = {"127.0.0.1", "localhost", "[::1]"}
 
 
 def registry_path() -> Path:
-    override = os.environ.get("CCORCH_MANAGER_HOME")
-    base = Path(override) if override else Path.home() / ".ccorch"
-    return base / "manager.json"
+    return ccorch_home() / "manager.json"
 
 
 class Registry:
@@ -103,6 +103,17 @@ class IntakeBody(BaseModel):
 
 class InboxBody(BaseModel):
     tickets: list[dict[str, Any]]
+    create_in_jira: bool = False
+
+
+class JiraCredsBody(BaseModel):
+    url: str
+    email: str = ""
+    token: str = ""
+
+
+class JiraMoveBody(BaseModel):
+    status: str
 
 
 class ApplyBody(BaseModel):
@@ -449,11 +460,128 @@ def create_app(reg: Registry, port: int = 7420) -> FastAPI:
 
     @app.post("/api/repos/{repo_id}/inbox")
     def add_inbox(repo_id: int, body: InboxBody) -> dict[str, Any]:
-        _, inbox = _inbox(repo_id)
+        path, inbox = _inbox(repo_id)
+        if not body.create_in_jira:
+            try:
+                return {"saved": inbox.add(body.tickets)}
+            except InboxError as exc:
+                raise HTTPException(400, str(exc)) from exc
+        cfg, client = _jira_client(path)
+        saved: list[str] = []
+        failed: list[dict[str, Any]] = []
+        for draft in body.tickets:
+            try:
+                ticket = inbox.normalize_ticket(draft)
+                if not jira.is_jira_key(cfg, ticket["id"]):
+                    jc = cfg["jira"]
+                    key = client.create_issue(
+                        jc["project_key"],
+                        jc["issue_types"][ticket["type"]],
+                        ticket["title"],
+                        jira.ticket_description(ticket),
+                    )
+                    ticket = {
+                        **ticket,
+                        "id": key,
+                        "jira_key": key,
+                        "jira_url": f"{client.base}/browse/{key}",
+                        "jira_status": "",
+                    }
+                saved += inbox.add([ticket])
+            except (jira.JiraError, InboxError) as exc:
+                failed.append({"draft": draft, "error": str(exc)})
+        return {"saved": saved, "failed": failed}
+
+    # --- Jira (the login is personal: ~/.ccorch/credentials.json, never the repo) ----------
+
+    def _jira_client(path: Path) -> tuple[dict[str, Any], jira.Jira]:
         try:
-            return {"saved": inbox.add(body.tickets)}
-        except InboxError as exc:
+            cfg = config.load(path)
+        except config.ConfigError as exc:
             raise HTTPException(400, str(exc)) from exc
+        client = jira.client_for(cfg)
+        if client is None:
+            raise HTTPException(
+                400, "Jira is off for this repo, or no login is saved (Your Jira login)"
+            )
+        return cfg, client
+
+    @app.get("/api/jira/credentials")
+    def jira_creds(url: str = "") -> dict[str, Any]:
+        return jira.creds_status(url)
+
+    @app.put("/api/jira/credentials")
+    def jira_save_creds(body: JiraCredsBody) -> dict[str, Any]:
+        try:
+            jira.save_creds(body.url, body.email, body.token)
+        except (jira.JiraError, OSError) as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return jira.creds_status(body.url)
+
+    @app.post("/api/repos/{repo_id}/jira/test")
+    def jira_test(repo_id: int, body: ConfigBody) -> dict[str, Any]:
+        _repo_by_id(reg, repo_id)
+        errors = _errors(body.config)
+        out: dict[str, Any] = {
+            "ok": False,
+            "user": "",
+            "project_name": "",
+            "issue_types": [],
+            "statuses": [],
+            "problems": list(errors),
+        }
+        if errors:
+            return out
+        jc = _full_config(body.config)["jira"]
+        creds = jira.load_creds(jc["url"]) if jc["url"] else None
+        if not jc["enabled"] or creds is None:
+            out["problems"].append("Turn Jira on and save your login first.")
+            return out
+        client = jira.Jira(jc["url"], jc["deployment"], creds)
+        try:
+            me = client.myself()
+            project = client.project(jc["project_key"])
+            statuses = client.statuses(jc["project_key"])
+        except jira.JiraError as exc:
+            out["problems"].append(str(exc))
+            return out
+        out.update(
+            ok=True,
+            user=str(me.get("displayName") or me.get("name") or ""),
+            project_name=project["name"],
+            issue_types=project["issue_types"],
+            statuses=statuses,
+        )
+        known_types = {t.lower() for t in project["issue_types"]}
+        known_status = {s.lower() for s in statuses}
+        for ticket_type, name in jc["issue_types"].items():
+            if name.lower() not in known_types:
+                out["problems"].append(f"Issue type {name!r} ({ticket_type}) is not in the project")
+        for event, name in jc["move_to"].items():
+            if name and name.lower() not in known_status:
+                out["problems"].append(f"Status {name!r} ({event}) is not in the project")
+        return out
+
+    @app.get("/api/repos/{repo_id}/jira/issue/{key}")
+    def jira_issue(repo_id: int, key: str) -> dict[str, Any]:
+        _, client = _jira_client(_repo_by_id(reg, repo_id))
+        try:
+            issue = client.get_issue(key)
+            targets = sorted({t["to"] for t in client.transitions(key) if t["to"]})
+        except jira.JiraError as exc:
+            raise HTTPException(502, str(exc)) from exc
+        return {"key": key, "status": issue.status, "url": issue.url, "targets": targets}
+
+    @app.post("/api/repos/{repo_id}/jira/issue/{key}/move")
+    def jira_move(repo_id: int, key: str, body: JiraMoveBody) -> dict[str, str]:
+        _, client = _jira_client(_repo_by_id(reg, repo_id))
+        try:
+            result = client.move(key, body.status)
+        except jira.JiraError as exc:
+            raise HTTPException(502, str(exc)) from exc
+        if result == "no_transition":
+            raise HTTPException(400, f"The workflow has no transition to {body.status!r}")
+        return {"result": result}
 
     @app.delete("/api/repos/{repo_id}/inbox/{ticket_id}")
     def delete_inbox(repo_id: int, ticket_id: str) -> dict[str, bool]:

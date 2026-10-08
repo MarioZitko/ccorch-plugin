@@ -138,6 +138,9 @@ Check which version you have with `claude plugin list`.
 | `/ccorch:mr [notes]` | Commit pending work (through the gate) and open the merge request. |
 | `/ccorch:manage` | Open the settings page. |
 
+`ccorch` also has a helper command that Claude (or you) can run: `ccorch jira status [KEY]`,
+`ccorch jira show KEY` and `ccorch jira move KEY "Status"` (see [Jira](#jira)).
+
 While a ticket is running you can watch everything in the session. `/context` shows what is using
 your context. To stop tracking a ticket without finishing it, ask Claude to run
 `ccorch finish --outcome abandoned` (the branch stays).
@@ -159,6 +162,7 @@ Open it with `/ccorch:manage`. It runs only on your computer (`127.0.0.1`).
     Code are asked to install ccorch (only once a marketplace URL is set).
   - a `.gitignore` entry for `.claude/ccorch.local.toml` - your personal overrides (for example a
     different model), never committed.
+- **Jira section** (under Settings) - connect a Jira project (see [Jira](#jira)).
 - **Inbox tab** - tickets from transcripts (below).
 - **Activity tab** - the running ticket and past tickets of that clone: branch, commits, phases,
   merge request link, handoff notes.
@@ -174,6 +178,9 @@ Open it with `/ccorch:manage`. It runs only on your computer (`127.0.0.1`).
 3. Review and edit the cards (id, type, size, title, description, acceptance criteria), remove
    what you don't want, then **Save to inbox**. Tickets without an id get `T-001`, `T-002`, …
    (change the prefix per repo under *Tickets from transcripts* in the Settings tab).
+   If Jira is connected and *Create issues from the Inbox* is on, **Also create in Jira** (ticked
+   by default) creates each ticket as a Jira issue and uses the Jira key (`PROJ-456`) as its id.
+   If some fail, the ones that worked are saved and the failed ones stay on screen with the reason.
 4. Pick how to start it in the dropdown - *auto* (uses the repo's Planning setting and the
    ticket's size), *quick (no plan)* or *with plan* - then **Open in Claude Code** (opens a terminal
    in the repo running `/ccorch:ticket T-001`) or copy the command. The ticket skill reads the full ticket from the
@@ -181,6 +188,38 @@ Open it with `/ccorch:manage`. It runs only on your computer (`127.0.0.1`).
 
 Short one-shot steps like this run in the background and show their result in the settings page.
 Everything that changes code runs in Claude Code, where you can watch and steer it.
+
+## Jira
+
+ccorch can read tickets from Jira and move them across your board for you. It talks to Jira's
+REST API directly, so no extra Jira tool needs to be installed.
+
+**Set up** (Settings tab → **Jira**):
+
+1. Turn on *Use Jira*, enter the Jira URL (for example `https://yourcompany.atlassian.net`),
+   choose *cloud* or *server* (Data Center), and the project key (the `PROJ` in `PROJ-123`).
+2. Under **Your Jira login**: on Jira Cloud enter your Atlassian email and an
+   [API token](https://id.atlassian.com/manage-profile/security/api-tokens); on Jira Server enter a
+   personal access token. Click **Save login**, then **Test connection**.
+   The login is stored only on your computer, in `~/.ccorch/credentials.json` (readable only by
+   you). It is never put in the repo, never committed and never shown again. Alternatively set the
+   environment variables `CCORCH_JIRA_TOKEN` (and `CCORCH_JIRA_EMAIL` for Cloud); they win over
+   the saved login.
+3. **Review & install** to save the other Jira settings in `.claude/ccorch.toml` (no secrets).
+
+**What it does**
+
+- `/ccorch:ticket PROJ-123` reads the issue (title, description, type) from Jira.
+- When ccorch creates the branch, the issue moves to **In Progress**; when the merge request is
+  opened it moves to **In Review** and gets a comment with the MR link. Optionally it moves
+  somewhere else when you abandon the ticket. Change or clear any of these under *Move to column*.
+- A board column shows one or more statuses, so enter the **status** you want the ticket to get
+  (after *Test connection* the field suggests your project's statuses). Jira only allows moves your
+  workflow permits.
+- You can also move an issue by hand: open its card in the Inbox and use **Move to…**, or run
+  `ccorch jira move PROJ-123 "Done"`.
+- If Jira is unreachable or the login is wrong, ccorch prints a `Jira warning` and carries on: the
+  branch, commit or merge request still happens.
 
 ## Sharing with your team
 
@@ -214,6 +253,10 @@ with the two commands from [step 2](#2-install-the-plugin).
 - **"working tree is not clean"** - commit or stash your changes before starting a ticket.
 - **A setting didn't apply, or the build/test gate didn't run** - look for a message about
   `.claude/ccorch.toml` being invalid; fix the file (or the setting in the settings page) and retry.
+- **`Jira warning: HTTP 401`** - the email or API token is wrong (on Jira Cloud the email must be
+  your Atlassian account email). Save the login again and click **Test connection**.
+- **`Jira warning: no transition to "X"`** - the issue's workflow can't go to that status from
+  where it is now. Move it by hand in Jira, or change the status name under *Move to column*.
 - **The push worked but no merge request link** - the remote isn't GitLab, or GitLab rejected a
   push option; open the MR manually from the pushed branch.
 - **macOS asks for permission to control Terminal** - that's **Open in Claude Code**; allow it,

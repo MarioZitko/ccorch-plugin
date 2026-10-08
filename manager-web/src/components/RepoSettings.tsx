@@ -11,6 +11,7 @@ import {
   TextInput,
   Toggle,
 } from "./ui";
+import { JiraSection } from "./JiraSection";
 
 type Update = (fn: (c: Config) => void) => void;
 
@@ -201,6 +202,8 @@ export function RepoSettings(props: { repoId: number; meta: Meta; config: Config
           ))}
         </Row>
       </Section>
+
+      <JiraSection repoId={props.repoId} config={c} update={update} />
 
       <Section title="Tickets from transcripts" hint="Used by the Inbox tab.">
         <Row>

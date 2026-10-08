@@ -11,6 +11,7 @@ from ccorch_lib.branch import clean_ticket_id
 from ccorch_lib.config import TICKET_TYPES
 from ccorch_lib.state import StateStore, now
 
+JIRA_FIELDS = ("jira_key", "jira_url", "jira_status", "jira_updated")
 FIELDS = ("id", "type", "title", "description", "acceptance_criteria", "size")
 
 
@@ -33,7 +34,9 @@ def normalize(raw: dict[str, Any]) -> dict[str, Any]:
     if isinstance(criteria, str):
         criteria = criteria.splitlines()
     size = raw.get("size", "big")
+    jira_extra = {k: str(raw[k]) for k in JIRA_FIELDS if raw.get(k)}
     return {
+        **jira_extra,
         "id": tid,
         "type": ttype,
         "title": title,
@@ -71,6 +74,10 @@ class Inbox:
             return []
         items = [json.loads(p.read_text(encoding="utf-8")) for p in self.dir.glob("*.json")]
         return sorted(items, key=lambda t: (t.get("status") != "queued", t.get("created_at", "")))
+
+    @staticmethod
+    def normalize_ticket(raw: dict[str, Any]) -> dict[str, Any]:
+        return normalize(raw)
 
     def get(self, tid: str) -> dict[str, Any] | None:
         path = self._path(tid)

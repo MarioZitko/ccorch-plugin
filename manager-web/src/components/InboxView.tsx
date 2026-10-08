@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   api,
+  type Config,
   type InboxTicket,
   type IntakeResult,
   type StartMode,
@@ -48,6 +49,54 @@ function DraftCard(props: {
   );
 }
 
+function JiraMove(props: { repoId: number; t: InboxTicket; notify: (m: string, err?: boolean) => void }) {
+  const { t, repoId } = props;
+  const [targets, setTargets] = useState<string[] | null>(null);
+  const [status, setStatus] = useState(t.jira_status ?? "");
+  const key = t.jira_key ?? "";
+
+  useEffect(() => {
+    api
+      .jiraIssue(repoId, key)
+      .then((i) => {
+        setTargets(i.targets);
+        setStatus(i.status);
+      })
+      .catch((e: Error) => props.notify(`Jira: ${e.message}`, true));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [repoId, key]);
+
+  const move = (to: string) =>
+    api
+      .jiraMove(repoId, key, to)
+      .then(() => {
+        setStatus(to);
+        props.notify(`${key} moved to ${to}`);
+        return api.jiraIssue(repoId, key).then((i) => setTargets(i.targets));
+      })
+      .catch((e: Error) => props.notify(e.message, true));
+
+  return (
+    <div className="flex items-center gap-2 text-xs text-zinc-600 dark:text-zinc-400">
+      <span>Jira status: {status || "…"}</span>
+      <select
+        className="input py-1 text-xs"
+        style={{ width: "auto" }}
+        value=""
+        disabled={!targets?.length}
+        onChange={(e) => e.target.value && void move(e.target.value)}
+      >
+        <option value="">{targets === null ? "Loading…" : "Move to…"}</option>
+        {(targets ?? []).map((s) => (
+          <option key={s} value={s}>
+            {s}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 function QueuedCard(props: { repoId: number; t: InboxTicket; onChanged: () => void; notify: (m: string, err?: boolean) => void }) {
   const { t, repoId } = props;
   const [open, setOpen] = useState(false);
@@ -66,6 +115,12 @@ function QueuedCard(props: { repoId: number; t: InboxTicket; onChanged: () => vo
         <Badge tone={t.type === "bug" ? "amber" : "indigo"}>{t.type}</Badge>
         <Badge tone="zinc">{t.size}</Badge>
         {t.status === "started" ? <Badge tone="green">started</Badge> : <Badge tone="zinc">queued</Badge>}
+        {t.jira_url && (
+          <a className="text-xs text-indigo-600 hover:underline" href={t.jira_url} target="_blank" rel="noreferrer">
+            Jira ↗
+          </a>
+        )}
+        {t.jira_status && <Badge tone="indigo">{t.jira_status}</Badge>}
         <div className="ml-auto flex gap-1.5 whitespace-nowrap">
           <select
             className="input py-1 text-xs"
@@ -113,6 +168,7 @@ function QueuedCard(props: { repoId: number; t: InboxTicket; onChanged: () => vo
       {t.branch && <div className="mt-1 font-mono text-xs text-zinc-500">{t.branch}</div>}
       {open && (
         <div className="mt-3 grid gap-2 text-sm">
+          {t.jira_key && <JiraMove repoId={repoId} t={t} notify={props.notify} />}
           <p className="whitespace-pre-wrap text-zinc-700 dark:text-zinc-300">{t.description || "(no description)"}</p>
           {t.acceptance_criteria.length > 0 && (
             <ul className="list-disc pl-5 text-xs text-zinc-600 dark:text-zinc-400">
@@ -127,13 +183,15 @@ function QueuedCard(props: { repoId: number; t: InboxTicket; onChanged: () => vo
   );
 }
 
-export function InboxView(props: { repoId: number; intakeModel: string; notify: (m: string, err?: boolean) => void }) {
+export function InboxView(props: { repoId: number; intakeModel: string; jira?: Config["jira"]; notify: (m: string, err?: boolean) => void }) {
   const { repoId, notify } = props;
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<IntakeResult | null>(null);
   const [drafts, setDrafts] = useState<TicketDraft[]>([]);
   const [queued, setQueued] = useState<InboxTicket[]>([]);
+  const jiraOn = !!props.jira?.enabled && props.jira.create_issues;
+  const [alsoJira, setAlsoJira] = useState(true);
 
   const load = useCallback(() => api.inbox(repoId).then(setQueued).catch(() => undefined), [repoId]);
   useEffect(() => {
@@ -159,11 +217,18 @@ export function InboxView(props: { repoId: number; intakeModel: string; notify: 
   const save = async () => {
     try {
       const clean = drafts.map((d) => ({ ...d, acceptance_criteria: d.acceptance_criteria.filter((c) => c.trim()) }));
-      const res = await api.saveInbox(repoId, clean);
-      notify(`Saved ${res.saved.join(", ")} to the inbox`);
-      setDrafts([]);
-      setResult(null);
-      setText("");
+      const res = await api.saveInbox(repoId, clean, jiraOn && alsoJira);
+      const failed = res.failed ?? [];
+      if (res.saved.length) notify(`Saved ${res.saved.join(", ")} to the inbox`);
+      if (failed.length) {
+        // Keep what did not work on screen so nothing typed is lost.
+        setDrafts(failed.map((f) => f.draft));
+        notify(failed.map((f) => `${f.draft.id}: ${f.error}`).join(" | "), true);
+      } else {
+        setDrafts([]);
+        setResult(null);
+        setText("");
+      }
       await load();
     } catch (e) {
       notify((e as Error).message, true);
@@ -209,6 +274,12 @@ export function InboxView(props: { repoId: number; intakeModel: string; notify: 
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold">Review {drafts.length} tickets</h2>
             <div className="flex gap-2">
+              {jiraOn && (
+                <label className="flex items-center gap-1.5 text-xs">
+                  <input type="checkbox" checked={alsoJira} onChange={(e) => setAlsoJira(e.target.checked)} />
+                  Also create in Jira ({props.jira?.project_key})
+                </label>
+              )}
               <button type="button" className="btn" onClick={() => setDrafts([])}>
                 Discard
               </button>
