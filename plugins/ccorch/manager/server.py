@@ -18,6 +18,7 @@ import sys
 import threading
 import urllib.request
 import webbrowser
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -27,8 +28,9 @@ from fastapi import FastAPI, HTTPException, Request  # noqa: E402
 from fastapi.responses import FileResponse, JSONResponse, Response  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
 
-from ccorch_lib import branch, config, gate, install  # noqa: E402
+from ccorch_lib import branch, claude, config, gate, install, intake, terminal  # noqa: E402
 from ccorch_lib.git import Git, GitError, find_root  # noqa: E402
+from ccorch_lib.inbox import Inbox, InboxError  # noqa: E402
 from ccorch_lib.state import StateStore  # noqa: E402
 
 STATIC = Path(__file__).resolve().parent / "static"
@@ -78,6 +80,14 @@ class MarketBody(BaseModel):
 
 class ConfigBody(BaseModel):
     config: dict[str, Any]
+
+
+class IntakeBody(BaseModel):
+    text: str
+
+
+class InboxBody(BaseModel):
+    tickets: list[dict[str, Any]]
 
 
 class ApplyBody(BaseModel):
@@ -303,6 +313,91 @@ def create_app(reg: Registry) -> FastAPI:
         store = StateStore(Git(path).git_dir())
         state = store.active()
         return {"active": state.__dict__ if state else None, "history": store.read_history(30)}
+
+    # --- transcript -> tickets (headless claude, subscription) and the inbox ---------------
+
+    def _inbox(repo_id: int) -> tuple[Path, Inbox]:
+        path = _repo_by_id(reg, repo_id)
+        return path, Inbox(StateStore(Git(path).git_dir()))
+
+    @app.get("/api/claude")
+    def claude_info() -> dict[str, Any]:
+        exe = claude.resolve()
+        _, removed = claude.child_env()
+        return {
+            "path": exe,
+            "version": claude.version(exe) if exe else None,
+            "api_key_env": bool(removed),
+        }
+
+    @app.post("/api/claude/update")
+    def claude_update() -> dict[str, Any]:
+        exe = claude.resolve()
+        if exe is None:
+            raise HTTPException(400, "claude not found")
+        return {"output": claude.update(exe), "version": claude.version(exe)}
+
+    @app.post("/api/repos/{repo_id}/intake")
+    def run_intake(repo_id: int, body: IntakeBody) -> dict[str, Any]:
+        path, inbox = _inbox(repo_id)
+        try:
+            cfg = config.load(path)
+        except config.ConfigError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        try:
+            drafts, notes, answer = intake.extract(body.text, cfg["models"]["intake"], path)
+        except claude.ClaudeError as exc:
+            raise HTTPException(502, str(exc)) from exc
+        fresh: Iterator[str] = iter(inbox.next_ids(cfg["intake"]["id_prefix"], len(drafts)))
+        tickets = []
+        for d in drafts:
+            ext = str(d.get("external_id", "")).strip()
+            tickets.append({**d, "id": ext or next(fresh)})
+        return {
+            "tickets": tickets,
+            "notes": notes,
+            "cost_usd": answer.cost_usd,
+            "duration_ms": answer.duration_ms,
+            "model": answer.model,
+        }
+
+    @app.get("/api/repos/{repo_id}/inbox")
+    def list_inbox(repo_id: int) -> list[dict[str, Any]]:
+        _, inbox = _inbox(repo_id)
+        return inbox.items()
+
+    @app.post("/api/repos/{repo_id}/inbox")
+    def add_inbox(repo_id: int, body: InboxBody) -> dict[str, Any]:
+        _, inbox = _inbox(repo_id)
+        try:
+            return {"saved": inbox.add(body.tickets)}
+        except InboxError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+    @app.delete("/api/repos/{repo_id}/inbox/{ticket_id}")
+    def delete_inbox(repo_id: int, ticket_id: str) -> dict[str, bool]:
+        _, inbox = _inbox(repo_id)
+        return {"deleted": inbox.delete(ticket_id)}
+
+    @app.get("/api/repos/{repo_id}/inbox/{ticket_id}/command")
+    def inbox_command(repo_id: int, ticket_id: str) -> dict[str, str]:
+        path = _repo_by_id(reg, repo_id)
+        prompt = f"/ccorch:ticket {ticket_id}"
+        return {"slash": prompt, "shell": f"cd {path} && {terminal.display_command(prompt)}"}
+
+    @app.post("/api/repos/{repo_id}/inbox/{ticket_id}/launch")
+    def inbox_launch(repo_id: int, ticket_id: str) -> dict[str, Any]:
+        path, inbox = _inbox(repo_id)
+        if inbox.get(ticket_id) is None:
+            raise HTTPException(404, "ticket not in inbox")
+        exe = claude.resolve()
+        if exe is None:
+            raise HTTPException(400, "claude not found")
+        try:
+            terminal.open_terminal(path, terminal.claude_argv(exe, f"/ccorch:ticket {ticket_id}"))
+        except (terminal.TerminalError, OSError) as exc:
+            raise HTTPException(500, str(exc)) from exc
+        return {"launched": True}
 
     @app.get("/api/fs")
     def browse(path: str = "") -> dict[str, Any]:

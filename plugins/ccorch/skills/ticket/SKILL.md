@@ -25,8 +25,10 @@ Run `ccorch context`.
 
 ## 1. Ticket
 
-If ticket text was passed, use it. Otherwise, if a Jira/issue tracker tool is available, fetch the
-ticket by id. Otherwise ask the user to paste title, description and acceptance criteria.
+Run `ccorch inbox show <ID>`. If it prints a ticket (created from a transcript in the manager UI),
+use it - including its type and title. Otherwise, if ticket text was passed, use that. Otherwise,
+if a Jira/issue tracker tool is available, fetch the ticket by id. Otherwise ask the user to paste
+title, description and acceptance criteria.
 Decide the type: `feature`, `bug` or `task`, and a short title (under ~8 words).
 
 ## 2. Branch

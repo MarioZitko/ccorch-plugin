@@ -151,8 +151,8 @@ export function RepoSettings(props: { repoId: number; meta: Meta; config: Config
         hint="Aliases use the newest model your installed Claude Code knows - keep the CLI updated. Personal overrides: .claude/ccorch.local.toml."
       >
         <Row>
-          {(["planner", "implementer", "reviewer"] as const).map((role) => (
-            <Field key={role} label={role[0].toUpperCase() + role.slice(1)}>
+          {(["intake", "planner", "implementer", "reviewer"] as const).map((role) => (
+            <Field key={role} label={MODEL_LABELS[role]}>
               <Select
                 value={c.models[role]}
                 options={meta.model_choices}
@@ -162,9 +162,31 @@ export function RepoSettings(props: { repoId: number; meta: Meta; config: Config
           ))}
         </Row>
       </Section>
+
+      <Section title="Tickets from transcripts" hint="Used by the Inbox tab.">
+        <Row>
+          <Field
+            label="ID prefix"
+            hint={`Tickets without an id in the transcript get ${c.intake.id_prefix || "T"}-001, -002, …`}
+          >
+            <TextInput
+              mono
+              value={c.intake.id_prefix}
+              onChange={(v) => update((x) => void (x.intake.id_prefix = v))}
+            />
+          </Field>
+        </Row>
+      </Section>
     </div>
   );
 }
+
+const MODEL_LABELS = {
+  intake: "Intake (transcript → tickets)",
+  planner: "Planner",
+  implementer: "Implementer",
+  reviewer: "Reviewer",
+} as const;
 
 function BranchSection(props: { config: Config; update: Update; meta: Meta }) {
   const { config: c, update } = props;

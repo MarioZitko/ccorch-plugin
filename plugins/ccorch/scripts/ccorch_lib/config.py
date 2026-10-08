@@ -56,12 +56,19 @@ DEFAULTS: dict[str, Any] = {
         "max_fix_iterations": 2,
         "small_inline": True,
     },
+    "intake": {
+        "id_prefix": "T",
+    },
     "models": {
+        "intake": "haiku",
         "planner": "opus",
         "implementer": "sonnet",
         "reviewer": "opus",
     },
 }
+
+MODEL_ROLES = ("intake", "planner", "implementer", "reviewer")
+_ID_PREFIX = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,15}$")
 
 _PLACEHOLDER = re.compile(r"\{([^{}]*)\}")
 _BRANCH_FIELDS = {"type", "ticket_id", "slug"}
@@ -186,12 +193,18 @@ def validate(cfg: dict[str, Any]) -> None:
         errors,
     )
 
-    for role in ("planner", "implementer", "reviewer"):
+    for role in MODEL_ROLES:
         _expect(
             cfg["models"].get(role) in MODEL_CHOICES,
             f"models.{role} must be one of {MODEL_CHOICES}",
             errors,
         )
+    prefix = cfg["intake"]["id_prefix"]
+    _expect(
+        isinstance(prefix, str) and bool(_ID_PREFIX.match(prefix)),
+        "intake.id_prefix must start with a letter (letters, digits, - or _; max 16)",
+        errors,
+    )
 
     if errors:
         raise ConfigError("; ".join(errors))

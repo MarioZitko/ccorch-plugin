@@ -21,7 +21,37 @@ export interface Config {
     max_fix_iterations: number;
     small_inline: boolean;
   };
-  models: { planner: string; implementer: string; reviewer: string };
+  intake: { id_prefix: string };
+  models: { intake: string; planner: string; implementer: string; reviewer: string };
+}
+
+export interface TicketDraft {
+  id: string;
+  type: TicketType;
+  title: string;
+  description: string;
+  acceptance_criteria: string[];
+  size: "small" | "big";
+}
+
+export interface InboxTicket extends TicketDraft {
+  status: "queued" | "started";
+  created_at: string;
+  branch?: string;
+}
+
+export interface IntakeResult {
+  tickets: TicketDraft[];
+  notes: string;
+  cost_usd: number;
+  duration_ms: number;
+  model: string;
+}
+
+export interface ClaudeInfo {
+  path: string | null;
+  version: string | null;
+  api_key_env: boolean;
 }
 
 export interface Marketplace {
@@ -149,6 +179,22 @@ export const api = {
       ticket_id,
       title,
     }),
+  claudeInfo: () => call<ClaudeInfo>("GET", "/api/claude"),
+  claudeUpdate: () => call<{ output: string; version: string }>("POST", "/api/claude/update"),
+  intake: (id: number, text: string) =>
+    call<IntakeResult>("POST", `/api/repos/${id}/intake`, { text }),
+  inbox: (id: number) => call<InboxTicket[]>("GET", `/api/repos/${id}/inbox`),
+  saveInbox: (id: number, tickets: TicketDraft[]) =>
+    call<{ saved: string[] }>("POST", `/api/repos/${id}/inbox`, { tickets }),
+  deleteInbox: (id: number, tid: string) =>
+    call<{ deleted: boolean }>("DELETE", `/api/repos/${id}/inbox/${encodeURIComponent(tid)}`),
+  inboxCommand: (id: number, tid: string) =>
+    call<{ slash: string; shell: string }>(
+      "GET",
+      `/api/repos/${id}/inbox/${encodeURIComponent(tid)}/command`,
+    ),
+  launch: (id: number, tid: string) =>
+    call<{ launched: boolean }>("POST", `/api/repos/${id}/inbox/${encodeURIComponent(tid)}/launch`),
   browse: (path: string) =>
     call<DirListing>("GET", `/api/fs?path=${encodeURIComponent(path)}`),
 };

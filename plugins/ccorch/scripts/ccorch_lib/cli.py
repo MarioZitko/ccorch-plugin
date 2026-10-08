@@ -12,6 +12,7 @@ from typing import Any
 
 from ccorch_lib import branch, config, gate, install, mr
 from ccorch_lib.git import Git, GitError, find_root
+from ccorch_lib.inbox import Inbox, to_markdown
 from ccorch_lib.state import StateStore, TicketState
 
 HOOK_TAIL_LINES = 80
@@ -169,6 +170,7 @@ def cmd_start(args: argparse.Namespace) -> int:
     ctx.git.create_branch(base, name)
     state = TicketState(ticket_id=args.id, type=args.type, title=args.title, branch=name, base=base)
     ctx.store.save(state)
+    Inbox(ctx.store).mark_started(args.id, name)
     print(f"Created branch {name} from {ctx.git.base_ref(base)}")
     return 0
 
@@ -285,6 +287,24 @@ def cmd_finish(args: argparse.Namespace) -> int:
         return 0
     ctx.store.finish(state, args.outcome)
     print(f"Ticket {state.ticket_id} finished ({args.outcome}).")
+    return 0
+
+
+def cmd_inbox(args: argparse.Namespace) -> int:
+    ctx = Ctx(Path.cwd())
+    inbox = Inbox(ctx.store)
+    if args.action == "show":
+        item = inbox.get(args.id or "")
+        if item is None:
+            print(f"No ticket {args.id!r} in the inbox.")
+            return 1
+        print(to_markdown(item))
+        return 0
+    items = inbox.items()
+    if not items:
+        print("Inbox is empty.")
+    for t in items:
+        print(f"{t['id']:<14} {t['status']:<8} {t['type']:<8} {t['title']}")
     return 0
 
 
@@ -460,6 +480,11 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("status", help="show the active ticket")
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(fn=cmd_status)
+
+    sp = sub.add_parser("inbox", help="tickets extracted in the manager UI")
+    sp.add_argument("action", choices=["list", "show"])
+    sp.add_argument("id", nargs="?")
+    sp.set_defaults(fn=cmd_inbox)
 
     sp = sub.add_parser("init", help="create .claude/ccorch.toml with detected defaults")
     sp.add_argument("--write", action="store_true")

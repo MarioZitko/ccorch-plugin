@@ -113,6 +113,27 @@ Run `/ccorch:manage` (or `ccorch manage`) - a local web UI at http://127.0.0.1:7
 
 Without the UI: `ccorch init --write` writes a config with detected defaults.
 
+## Tickets from transcripts (Inbox tab)
+
+1. In the settings page, open a repo's **Inbox** tab and paste a meeting transcript, notes or
+   an email.
+2. **Extract tickets** makes one call to the intake model (default `haiku`) through your local
+   Claude Code - headless (`claude -p`), no tools, no repo access, on your subscription. The
+   manager removes `ANTHROPIC_API_KEY` from that call so it never bills an API key.
+3. Review and edit the ticket cards (id, type, size, title, description, acceptance criteria),
+   then **Save to inbox**. Tickets without an id in the text get `<prefix>-001`, `-002`, … (the
+   prefix is set per repo).
+4. Start one with **Open in Claude Code** (opens a terminal in the repo running
+   `claude "/ccorch:ticket T-001"`) or **Copy command** and paste it into a session yourself.
+   The ticket skill reads the full ticket from the inbox (`ccorch inbox show T-001`).
+
+So: short one-shot steps (transcript → tickets) run headless and show their result in the UI;
+everything that changes code runs in Claude Code where you can watch and steer it.
+
+The sidebar shows your installed Claude Code version with an **Update** button. Model choices
+(`haiku`, `sonnet`, `opus`) always mean the newest model of that family your installed Claude
+Code knows, so updating it is how you get new models.
+
 ## Commands
 
 | | |
