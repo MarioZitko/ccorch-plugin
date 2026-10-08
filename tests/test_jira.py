@@ -162,6 +162,21 @@ def test_workflow_moves_issue(
     assert fake.comments == []
 
 
+def test_workflow_moves_update_the_inbox_status(
+    jira_repo: Path, fake: FakeJira, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake.add_issue("PROJ-5", status="To Do")
+    inbox = Inbox(StateStore(Git(jira_repo).git_dir()))
+    assert cli.main(["inbox", "show", "PROJ-5"]) == 0
+    assert cli.main(["start", "--id", "PROJ-5", "--type", "bug", "--title", "Fix login"]) == 0
+    item = inbox.get("PROJ-5")
+    assert item and item["jira_status"] == "In Progress" and item["revision"] == 1
+    make_commit(jira_repo)
+    assert cli.main(["mr", "--description", "d"]) == 0
+    item = inbox.get("PROJ-5")
+    assert item and item["jira_status"] == "In Review" and item["status"] == "done"
+
+
 def test_mr_comment_and_abandon(
     jira_repo: Path, fake: FakeJira, monkeypatch: pytest.MonkeyPatch
 ) -> None:

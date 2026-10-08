@@ -117,6 +117,9 @@ def _jira_event(ctx: Ctx, state: TicketState, event: str, comment: str | None = 
                 print(f"Jira: {key} already {target}")
             else:
                 print(f"Jira warning: no transition to {target!r} from the current status of {key}")
+            inbox = Inbox(ctx.store)
+            if result != "no_transition" and inbox.get(state.ticket_id) is not None:
+                inbox.update(state.ticket_id, {"jira_status": target})  # the Inbox badge
         if comment:
             client.comment(key, comment)
     except Exception as exc:  # Jira trouble must never break the workflow
