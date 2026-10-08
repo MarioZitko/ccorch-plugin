@@ -82,6 +82,13 @@ class Inbox:
         dupes = {i for i in ids if ids.count(i) > 1}
         if dupes:
             raise InboxError(f"duplicate ticket ids: {sorted(dupes)}")
+        for t in cleaned:
+            existing = self.get(t["id"])
+            if existing and existing.get("status", "queued") != "queued":
+                raise InboxError(
+                    f"{t['id']} was already started on {existing.get('branch', '?')}; "
+                    "edit it instead of saving a new one"
+                )
         self.dir.mkdir(parents=True, exist_ok=True)
         for t in cleaned:
             existing = self.get(t["id"])

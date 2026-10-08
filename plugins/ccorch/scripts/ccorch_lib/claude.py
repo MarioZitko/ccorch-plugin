@@ -108,8 +108,7 @@ def ask_json(
     argv = [
         exe,
         "-p",
-        "--model",
-        model,
+        *([] if model == "inherit" else ["--model", model]),  # inherit = your default model
         "--output-format",
         "json",
         "--max-turns",
@@ -166,7 +165,8 @@ def ask_json(
         except json.JSONDecodeError as exc:
             raise ClaudeError(f"answer was not valid JSON: {exc}") from exc
     used = result.get("modelUsage")
-    model_used = ", ".join(used) if isinstance(used, dict) and used else model
+    fallback = "default" if model == "inherit" else model
+    model_used = ", ".join(used) if isinstance(used, dict) and used else fallback
     return JsonAnswer(
         data=data,
         cost_usd=float(result.get("total_cost_usd") or 0.0),

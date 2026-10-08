@@ -469,7 +469,7 @@ def create_app(reg: Registry, port: int = 7420) -> FastAPI:
     def inbox_command(repo_id: int, ticket_id: str, mode: str = "") -> dict[str, str]:
         path = _repo_by_id(reg, repo_id)
         prompt = _ticket_prompt(ticket_id, mode)
-        return {"slash": prompt, "shell": f"cd {path} && {terminal.display_command(prompt)}"}
+        return {"slash": prompt, "shell": terminal.display_shell(path, prompt)}
 
     @app.post("/api/repos/{repo_id}/inbox/{ticket_id}/launch")
     def inbox_launch(repo_id: int, ticket_id: str, mode: str = "") -> dict[str, Any]:

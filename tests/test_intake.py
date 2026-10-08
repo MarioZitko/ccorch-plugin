@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import stat
 import sys
 from pathlib import Path
@@ -11,7 +12,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from ccorch_lib import claude, cli
+from ccorch_lib import claude, cli, terminal
 from ccorch_lib.git import Git
 from ccorch_lib.inbox import Inbox, InboxError
 from ccorch_lib.state import StateStore
@@ -25,7 +26,7 @@ prompt = sys.stdin.read()
 args = sys.argv[1:]
 notes = "key=%s tools=%s model=%s doc=%s" % (
     "ANTHROPIC_API_KEY" in os.environ, "--tools" in args,
-    args[args.index("--model") + 1], "standup notes" in prompt)
+    args[args.index("--model") + 1] if "--model" in args else "none", "standup notes" in prompt)
 print(json.dumps({{
     "type": "result", "subtype": "success", "is_error": False, "result": "done",
     "total_cost_usd": 0.0012, "duration_ms": 900, "modelUsage": {{"claude-haiku-test": {{}}}},
@@ -54,6 +55,11 @@ def test_ask_json_strips_api_key_and_disables_tools(fake_claude: Path, tmp_path:
     assert answer.data["notes"] == "key=False tools=True model=haiku doc=True"
     assert answer.model == "claude-haiku-test" and answer.cost_usd == pytest.approx(0.0012)
     assert os.environ["ANTHROPIC_API_KEY"] == "sk-should-not-leak"  # only the child env
+
+
+def test_ask_json_inherit_sends_no_model(fake_claude: Path, tmp_path: Path) -> None:
+    answer = claude.ask_json("standup notes", {"type": "object"}, "inherit", tmp_path)
+    assert "model=none" in answer.data["notes"]
 
 
 def test_extract_json_from_fenced_text() -> None:
@@ -87,6 +93,29 @@ def test_inbox_ids_and_start(
     assert inbox.get("T-001")["status"] == "started"  # type: ignore[index]
 
 
+def test_display_shell_quotes_paths_with_spaces() -> None:
+    path = Path("/tmp/my repo/it's here")
+    parts = shlex.split(terminal.display_shell(path, "/ccorch:ticket T-1"))
+    assert parts[:3] == ["cd", str(path), "&&"] and parts[-1] == "/ccorch:ticket T-1"
+
+
+def test_inbox_add_refuses_to_overwrite_started_ticket(repo: Path) -> None:
+    inbox = Inbox(StateStore(Git(repo).git_dir()))
+    inbox.add([{"id": "T-001", "type": "bug", "title": "a"}])
+    inbox.add([{"id": "T-001", "type": "bug", "title": "a2"}])  # still queued: fine
+    inbox.mark_started("T-001", "fix/T-001-a")
+    with pytest.raises(InboxError, match="already started on fix/T-001-a"):
+        inbox.add(
+            [
+                {"id": "T-002", "type": "bug", "title": "b"},
+                {"id": "T-001", "type": "bug", "title": "c"},
+            ]
+        )
+    assert inbox.get("T-002") is None  # the batch failed as a whole
+    started = inbox.get("T-001")
+    assert started is not None and started["branch"] == "fix/T-001-a" and started["title"] == "a2"
+
+
 def test_intake_endpoint_assigns_ids_and_saves(
     fake_claude: Path, repo: Path, tmp_path: Path
 ) -> None:
@@ -105,6 +134,7 @@ def test_intake_endpoint_assigns_ids_and_saves(
     cmd = client.get("/api/repos/0/inbox/T-001/command").json()
     assert cmd["slash"] == "/ccorch:ticket T-001"
     assert "--plugin-dir" in cmd["shell"]  # dev checkout -> loads the plugin explicitly
+    assert shlex.split(cmd["shell"])[:3] == ["cd", str(repo), "&&"]
     quick = client.get("/api/repos/0/inbox/T-001/command", params={"mode": "quick"}).json()
     assert quick["slash"] == "/ccorch:ticket T-001 quick"
     assert client.get("/api/repos/0/inbox/T-001/command", params={"mode": "x"}).status_code == 400

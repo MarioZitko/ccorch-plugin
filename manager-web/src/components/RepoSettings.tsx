@@ -176,7 +176,7 @@ export function RepoSettings(props: { repoId: number; meta: Meta; config: Config
 
       <Section
         title="Models"
-        hint="Aliases use the newest model your installed Claude Code knows - keep the CLI updated. Personal overrides: .claude/ccorch.local.toml."
+        hint="Aliases use the newest model your installed Claude Code knows - keep the CLI updated. inherit = the agent's built-in default (planner opus, implementer sonnet, reviewer opus; for intake, your Claude Code default model). Personal overrides: .claude/ccorch.local.toml."
       >
         <Row>
           {(["intake", "planner", "implementer", "reviewer"] as const).map((role) => (

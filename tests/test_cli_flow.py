@@ -89,6 +89,30 @@ def test_start_refuses_dirty_tree_and_existing_ticket(configured: Path) -> None:
     assert cli.main(["start", "--id", "C-2", "--type", "task", "--title", "t"]) == 2
 
 
+def test_hook_warns_when_config_breaks_during_active_ticket(
+    configured: Path,
+) -> None:
+    repo = configured
+    cli.main(["start", "--id", "D-1", "--type", "bug", "--title", "x"])
+    (repo / ".claude" / "ccorch.toml").write_text("[gate\nbroken", encoding="utf-8")
+    out = cli.hook_stop({"cwd": str(repo)})
+    assert out is not None and "decision" not in out
+    assert "gate not run" in out["systemMessage"] and "ccorch.toml" in out["systemMessage"]
+    # No active ticket -> silent.
+    active = store(repo).active()
+    assert active is not None
+    store(repo).finish(active, "abandoned")
+    assert cli.hook_stop({"cwd": str(repo)}) is None
+
+
+def test_context_marks_inherit_models(configured: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    cfg = config.load(configured)
+    cfg["models"]["planner"] = "inherit"
+    config.write(configured, cfg)
+    assert cli.main(["context"]) == 0
+    assert "planner=inherit (omit the model parameter)" in capsys.readouterr().out
+
+
 def test_hook_ignores_repos_without_active_ticket(repo: Path) -> None:
     (repo / "app.txt").write_text("dirty\n")
     assert cli.hook_stop({"cwd": str(repo)}) is None

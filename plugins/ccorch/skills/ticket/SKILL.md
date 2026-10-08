@@ -25,7 +25,8 @@ Run `ccorch context`.
   `ccorch finish` it first.
 - If the config file is MISSING, tell the user to open the settings UI (`/ccorch:manage`) or run
   `ccorch init --write`, and continue with defaults only if they say so.
-- Use the Models line for every subagent call below (Agent tool `model` parameter).
+- Use the Models line for every subagent call below (Agent tool `model` parameter). If a role's
+  model is `inherit`, call the Agent tool without `model` (the agent's own default is used).
 
 ## 1. Ticket
 

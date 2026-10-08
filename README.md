@@ -209,6 +209,8 @@ with the two commands from [step 2](#2-install-the-plugin).
 - **"uv: command not found"** - install uv (link above) and restart your terminal.
 - **The wrong or an old model is used** - run `claude update` (or **Update** in the settings page).
 - **"working tree is not clean"** - commit or stash your changes before starting a ticket.
+- **A setting didn't apply, or the build/test gate didn't run** - look for a message about
+  `.claude/ccorch.toml` being invalid; fix the file (or the setting in the settings page) and retry.
 - **The push worked but no merge request link** - the remote isn't GitLab, or GitLab rejected a
   push option; open the MR manually from the pushed branch.
 - **macOS asks for permission to control Terminal** - that's **Open in Claude Code**; allow it,

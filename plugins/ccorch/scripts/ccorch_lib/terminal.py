@@ -37,6 +37,11 @@ def display_command(prompt: str) -> str:
     return " ".join(shlex.quote(p) for p in [*parts, prompt])
 
 
+def display_shell(cwd: Path, prompt: str) -> str:
+    """`cd` into the repo, then the command to type; paths with spaces are quoted."""
+    return f"cd {shlex.quote(str(cwd))} && {display_command(prompt)}"
+
+
 def _applescript_str(text: str) -> str:
     return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
 

@@ -78,6 +78,10 @@ def _gate_current_tree(ctx: Ctx, state: TicketState | None) -> gate.GateResult:
     return result
 
 
+def _model_label(model: str) -> str:
+    return "inherit (omit the model parameter)" if model == "inherit" else model
+
+
 def _fmt(template: str, state: TicketState, **extra: Any) -> str:
     values: dict[str, Any] = {
         "ticket_id": state.ticket_id,
@@ -124,7 +128,8 @@ def cmd_context(args: argparse.Namespace) -> int:
     print(
         "- Models (pass as the Agent tool `model`): "
         + ", ".join(
-            f"{role}={cfg['models'][role]}" for role in ("planner", "implementer", "reviewer")
+            f"{role}={_model_label(cfg['models'][role])}"
+            for role in ("planner", "implementer", "reviewer")
         )
     )
     if state:
@@ -370,12 +375,27 @@ def cmd_manage(args: argparse.Namespace) -> int:
 # --- Stop / SubagentStop hook ---------------------------------------------------------------
 
 
+def _broken_config_notice(cwd: Path, exc: config.ConfigError) -> dict[str, Any] | None:
+    """Tell the user the gate did not run, but only while a ticket is active."""
+    try:
+        root = find_root(cwd)
+        if root is None or StateStore(Git(root).git_dir()).active() is None:
+            return None
+    except GitError:
+        return None
+    return {
+        "systemMessage": f"ccorch: build/test gate not run - .claude/ccorch.toml is invalid: {exc}"
+    }
+
+
 def hook_stop(payload: dict[str, Any]) -> dict[str, Any] | None:
     """Decide what the Stop hook returns. None = allow the stop silently."""
     cwd = Path(str(payload.get("cwd") or os.getcwd()))
     try:
         ctx = Ctx(cwd)
-    except (CliError, config.ConfigError, GitError):
+    except config.ConfigError as exc:
+        return _broken_config_notice(cwd, exc)
+    except (CliError, GitError):
         return None
     state = ctx.store.active()
     if state is None or state.hold:
