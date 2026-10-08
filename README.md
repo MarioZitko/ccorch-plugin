@@ -1,179 +1,228 @@
 # ccorch - ticket → GitLab merge request, inside Claude Code
 
-A Claude Code plugin (and its own marketplace). In any configured repo:
+A Claude Code plugin. In any repo you've set up, run:
 
 ```
 /ccorch:ticket PROJ-123
 ```
 
-1. reads the ticket (pasted text, or your Jira/issue MCP tool),
-2. creates the branch **by script** from the repo's template, e.g. `feature/PROJ-123-add-login`,
-3. plans with an Opus subagent (you approve the plan),
-4. implements phase by phase with a Sonnet subagent - each phase is **gated**: a Stop hook runs
-   the repo's build + tests and Claude cannot finish while they fail,
-5. commits each phase (`[PROJ-123] phase 1: …`), reviews with an Opus subagent, fixes,
-6. pushes and opens the **GitLab MR** with push options (no API token).
+and it will:
 
-Everything happens in your normal Claude Code session (terminal, VS Code or desktop), so every
-step, tool call and subagent run is visible, and `/context` shows what is using your context.
+1. read the ticket (from the Inbox, pasted text, or your Jira/issue tool),
+2. create the branch **with a script** from the repo's naming template, e.g.
+   `feature/PROJ-123-add-login`,
+3. plan the work with an Opus subagent - you approve the plan,
+4. implement it phase by phase with a Sonnet subagent. After each phase the repo's build and tests
+   run automatically, and Claude cannot finish while they fail,
+5. commit each phase (`[PROJ-123] phase 1: …`), review the branch with an Opus subagent and fix
+   what it finds,
+6. push and open the **GitLab merge request** (no API token needed).
+
+Everything runs in your normal Claude Code session (terminal, VS Code or desktop app), so you see
+every step and can steer it. A small settings page lets you configure each repo and turn meeting
+transcripts into tickets.
 
 ## Requirements
 
-- Claude Code (keep it updated: `claude update` - model aliases like `opus` resolve to the newest
-  model *your installed CLI* knows).
-- [`uv`](https://docs.astral.sh/uv/) - runs the helper scripts and installs Python by itself.
-- git; a GitLab remote for the MR step.
-- Runs in your normal checkout (no worktrees): one active ticket per clone, clean tree to start.
+- **Claude Code**, signed in. Keep it updated (`claude update`): the model names `haiku`, `sonnet`
+  and `opus` always mean the newest model your installed Claude Code knows.
+- **[uv](https://docs.astral.sh/uv/getting-started/installation/)** - runs the plugin's helper
+  scripts and installs Python by itself. No other setup.
+- **git**, and a **GitLab** remote for the merge request step.
+- No worktrees: ccorch works in your normal checkout, one ticket at a time per clone, starting from
+  a clean working tree (nothing uncommitted).
 
-## Getting started
+## Quick start
 
-### 1. Update Claude Code and sign in
+### 1. Update and sign in to Claude Code
 
 ```bash
 claude update
 ```
 
-Then start `claude` and run `/login` if it asks you to sign in.
+Start `claude` once and run `/login` if it asks you to sign in.
 
-### 2. Open a repo with the plugin loaded (no install needed yet)
-
-```bash
-cd ~/Projects/your-repo
-claude --plugin-dir ~/Projects/ccorch-plugin/plugins/ccorch
-```
-
-Use any git repo whose working tree is clean (nothing uncommitted).
-
-### 3. Set up the repo
-
-Inside that Claude session, run `/ccorch:manage`. The settings page opens in your browser at
-http://127.0.0.1:7420. Then:
-
-- **Add repository** and pick the repo.
-- Check the base branch, the build/test commands (**Run gate now** shows whether they work), and
-  the branch/MR rules.
-- **Review & install**, then **Write files**.
-- Commit the new `.claude/ccorch.toml`.
-
-You can also open the settings page from a normal terminal, without Claude:
-
-```bash
-~/Projects/ccorch-plugin/plugins/ccorch/bin/ccorch manage
-```
-
-### 4. Run a ticket
-
-Back in the Claude session:
-
-```
-/ccorch:ticket PROJ-123 Add customer code to the invoice PDF. Acceptance: code shows under the customer name.
-```
-
-It creates the branch, shows you the plan to approve, implements and tests each phase, reviews,
-and opens the MR. Add `auto` after the ticket ID to skip the plan approval. Start with a small
-ticket.
-
-### 5. Install it permanently
-
-When you're happy with it, install it so you no longer need `--plugin-dir`:
-
-```bash
-claude plugin marketplace add ~/Projects/ccorch-plugin
-claude plugin install ccorch@ccorch-tools
-```
-
-(or `/plugin marketplace add …` and `/plugin install ccorch@ccorch-tools` inside Claude Code).
-
-### Sharing with the team
-
-The plugin lives at https://github.com/MarioZitko/ccorch-plugin. Teammates install it from there:
+### 2. Install the plugin
 
 ```bash
 claude plugin marketplace add MarioZitko/ccorch-plugin
 claude plugin install ccorch@ccorch-tools
 ```
 
-Paste `https://github.com/MarioZitko/ccorch-plugin.git` under **Marketplace** in the settings page. Every repo you install after that
-writes it into `.claude/settings.json`, so teammates who open the repo in Claude Code are asked
-to install the plugin.
+(Inside Claude Code you can do the same with `/plugin marketplace add MarioZitko/ccorch-plugin`
+and `/plugin install ccorch@ccorch-tools`.)
 
-## Configure a repo
+### 3. Set up a repo
 
-Run `/ccorch:manage` (or `ccorch manage`) - a local web UI at http://127.0.0.1:7420:
+Open Claude Code in your project and run the settings command:
 
-- add repos, edit branch naming (live preview), build/test commands (with a **Run gate now**
-  button), commit and MR rules (target, title, labels, assignee, draft, squash, delete source
-  branch, auto-merge), workflow switches and models per role;
-- **Review & install** shows the exact file diffs, then writes:
-  - `.claude/ccorch.toml` - the repo's settings (commit it, shared with the team),
-  - `.claude/settings.json` - registers this marketplace and enables the plugin, so teammates who
-    open the repo are prompted to install it (set the marketplace URL once under *Marketplace*),
-  - `.gitignore` entry for `.claude/ccorch.local.toml` (personal overrides, e.g. models);
-- **Activity** shows the active ticket and past runs of that clone.
+```bash
+cd ~/path/to/your-project
+claude
+```
 
-Without the UI: `ccorch init --write` writes a config with detected defaults.
+```
+/ccorch:manage
+```
 
-## Tickets from transcripts (Inbox tab)
+The settings page opens in your browser at http://127.0.0.1:7420 (the first start takes a few
+seconds while uv downloads its dependencies). Then:
 
-1. In the settings page, open a repo's **Inbox** tab and paste a meeting transcript, notes or
-   an email.
-2. **Extract tickets** makes one call to the intake model (default `haiku`) through your local
-   Claude Code - headless (`claude -p`), no tools, no repo access, on your subscription. The
-   manager removes `ANTHROPIC_API_KEY` from that call so it never bills an API key.
-3. Review and edit the ticket cards (id, type, size, title, description, acceptance criteria),
-   then **Save to inbox**. Tickets without an id in the text get `<prefix>-001`, `-002`, … (the
-   prefix is set per repo).
-4. Start one with **Open in Claude Code** (opens a terminal in the repo running
-   `claude "/ccorch:ticket T-001"`) or **Copy command** and paste it into a session yourself.
-   The ticket skill reads the full ticket from the inbox (`ccorch inbox show T-001`).
+1. **Add repository** and pick your project.
+2. Check what it detected and adjust:
+   - **Base branch** - where ticket branches start from,
+   - **Branch naming** - template and prefixes, with a live preview,
+   - **Build & test gate** - click **Run gate now** to check the commands work,
+   - **Merge request** - target branch, title, labels, assignee, draft, squash, delete branch,
+   - **Models** - which model plans, codes, reviews and reads transcripts.
+3. **Review & install** shows exactly which files will change → **Write files**.
+4. Commit the new files (`.claude/ccorch.toml`, `.claude/settings.json`, `.gitignore`).
 
-So: short one-shot steps (transcript → tickets) run headless and show their result in the UI;
-everything that changes code runs in Claude Code where you can watch and steer it.
+### 4. Run your first ticket
 
-The sidebar shows your installed Claude Code version with an **Update** button. Model choices
-(`haiku`, `sonnet`, `opus`) always mean the newest model of that family your installed Claude
-Code knows, so updating it is how you get new models.
+Back in Claude Code:
+
+```
+/ccorch:ticket PROJ-123 Add customer code to the invoice PDF. Acceptance: code shows under the customer name.
+```
+
+It creates the branch, shows you the plan to approve, implements and tests each phase, reviews,
+and opens the merge request. Start with a small ticket. Add `auto` after the ticket id to skip the
+plan approval.
+
+### 5. Optional: tickets from a meeting transcript
+
+In the settings page, open the repo's **Inbox** tab, paste a transcript, notes or an email, and
+click **Extract tickets**. Edit the ticket cards, **Save to inbox**, then click
+**Open in Claude Code** on a ticket (or **Copy command** and paste `/ccorch:ticket T-001` into
+Claude yourself). See [Tickets from transcripts](#tickets-from-transcripts) below.
 
 ## Commands
 
-| | |
+| In Claude Code | What it does |
 |---|---|
-| `/ccorch:ticket <ID> [auto] [text]` | full workflow (`auto` skips plan approval) |
-| `/ccorch:mr [notes]` | commit pending work through the gate and open the MR |
-| `/ccorch:manage` | open the settings UI |
+| `/ccorch:ticket <ID> [auto] [text]` | The full workflow. `auto` skips plan approval. |
+| `/ccorch:mr [notes]` | Commit pending work (through the gate) and open the merge request. |
+| `/ccorch:manage` | Open the settings page. |
 
-The skills drive the deterministic `ccorch` helper (on Claude's PATH while the plugin is
-enabled): `ccorch context | start | gate | commit | note | hold | resume | review-info | mr |
-finish | status | init | manage`. Ticket state lives in `.git/ccorch/` (never committed).
+While a ticket is running you can watch everything in the session. `/context` shows what is using
+your context. To stop tracking a ticket without finishing it, ask Claude to run
+`ccorch finish --outcome abandoned` (the branch stays).
+
+## The settings page
+
+Open it with `/ccorch:manage`. It runs only on your computer (`127.0.0.1`).
+
+- **Sidebar** - your repos, their status (*installed*, *config only*, *not set up*) and any
+  running ticket; your Claude Code version with an **Update** button; **Marketplace** (see
+  [Sharing with your team](#sharing-with-your-team)).
+- **Settings tab** - everything ccorch does in that repo. **Review & install** writes:
+  - `.claude/ccorch.toml` - the repo's settings. Commit it so the team shares them.
+  - `.claude/settings.json` - enables the plugin for the repo, so teammates who open it in Claude
+    Code are asked to install ccorch (only once a marketplace URL is set).
+  - a `.gitignore` entry for `.claude/ccorch.local.toml` - your personal overrides (for example a
+    different model), never committed.
+- **Inbox tab** - tickets from transcripts (below).
+- **Activity tab** - the running ticket and past tickets of that clone: branch, commits, phases,
+  merge request link, handoff notes.
+
+## Tickets from transcripts
+
+1. Paste a meeting transcript, notes or an email into the **Inbox** tab and click
+   **Extract tickets**.
+2. The settings page makes **one** call to the intake model (default `haiku`) through your own
+   Claude Code login - in the background (`claude -p`), with no tools and no access to the repo.
+   It uses your Claude subscription, not API credits: if `ANTHROPIC_API_KEY` is set on your
+   computer, the settings page removes it for this call and shows a warning.
+3. Review and edit the cards (id, type, size, title, description, acceptance criteria), remove
+   what you don't want, then **Save to inbox**. Tickets without an id get `T-001`, `T-002`, …
+   (change the prefix per repo under *Tickets from transcripts* in the Settings tab).
+4. Start a ticket with **Open in Claude Code** (opens a terminal in the repo running
+   `/ccorch:ticket T-001`) or copy the command. The ticket skill reads the full ticket from the
+   inbox. Inbox tickets are stored in `.git/ccorch/inbox/` and never committed.
+
+Short one-shot steps like this run in the background and show their result in the settings page.
+Everything that changes code runs in Claude Code, where you can watch and steer it.
+
+## Sharing with your team
+
+1. Make sure teammates can access this repo on GitHub.
+2. In the settings page, open **Marketplace** and set the Git URL to
+   `https://github.com/MarioZitko/ccorch-plugin.git`.
+3. **Review & install** each repo again and commit `.claude/settings.json`.
+
+From then on, a teammate who opens that repo in Claude Code is asked to install ccorch, and the
+repo's settings come from the committed `.claude/ccorch.toml`. They can also install it directly
+with the two commands from [step 2](#2-install-the-plugin).
 
 ## Token use
 
-- Skills are user-invoked only (`disable-model-invocation`), so the plugin adds almost nothing to
-  sessions where you don't use it.
-- Small tickets are done inline in the main session (no subagents) when `small_inline` is on.
-- Each phase runs in a fresh subagent context with only the ticket, plan summary, its phase and
-  short handoff notes - the main session stays small.
-- The gate result is cached by working-tree hash, so the commit after a passing hook does not
-  rebuild.
+- The commands only run when you type them, so the plugin adds almost nothing to sessions where
+  you don't use it.
+- Small tickets are done directly in the main session, without subagents (setting:
+  *Small tickets without subagents*).
+- Each phase runs in a fresh subagent with only the ticket, the plan summary, its own phase and
+  short notes from earlier phases, so the main session stays small.
+- The build/test result is cached by the exact state of the files, so nothing is rebuilt twice.
+- Transcript → tickets is a single small Haiku call.
 
-## Layout
+## Troubleshooting
 
-```
-.claude-plugin/marketplace.json   this repo is the marketplace
-plugins/ccorch/                   the plugin
-  skills/ agents/ hooks/          workflow, planner/implementer/reviewer, Stop-hook gate
-  bin/ccorch  scripts/            the helper (stdlib-only Python, run via uv)
-  manager/server.py  static/      settings UI backend (FastAPI) + built frontend
-manager-web/                      UI source (React + Vite + Tailwind) → builds into static/
-tests/                            pytest (real git repos in tmp dirs)
-```
+- **`/ccorch:...` commands don't show up** - check `claude plugin list`, then restart Claude Code.
+- **"uv: command not found"** - install uv (link above) and restart your terminal.
+- **The wrong or an old model is used** - run `claude update` (or **Update** in the settings page).
+- **"working tree is not clean"** - commit or stash your changes before starting a ticket.
+- **The push worked but no merge request link** - the remote isn't GitLab, or GitLab rejected a
+  push option; open the MR manually from the pushed branch.
+- **macOS asks for permission to control Terminal** - that's **Open in Claude Code**; allow it,
+  or use **Copy command** instead.
+
+---
 
 ## Development
 
+Clone the repo and load the plugin straight from your checkout (no install needed):
+
+```bash
+git clone https://github.com/MarioZitko/ccorch-plugin.git
+cd ~/path/to/a-test-project
+claude --plugin-dir ~/path/to/ccorch-plugin/plugins/ccorch
+```
+
+The settings page can also be started from a terminal:
+`~/path/to/ccorch-plugin/plugins/ccorch/bin/ccorch manage`.
+
+Checks (from the repo root):
+
 ```bash
 uv run pytest && uv run ruff check && uv run mypy
-cd manager-web && npm install && npm run build   # rebuild the UI after changing it
 claude plugin validate . && claude plugin validate ./plugins/ccorch
 ```
 
-Bump `version` in `plugins/ccorch/.claude-plugin/plugin.json` to ship an update to everyone.
+The settings page is built from `manager-web/` (React + Vite + Tailwind); the built files are
+committed so users don't need Node:
+
+```bash
+cd manager-web && npm install && npm run build
+```
+
+To ship an update, bump `version` in `plugins/ccorch/.claude-plugin/plugin.json`, commit and
+push. Users get it with `claude plugin update ccorch@ccorch-tools` and a Claude Code restart.
+
+### Layout
+
+```
+.claude-plugin/marketplace.json   this repo is also the plugin marketplace
+plugins/ccorch/                   the plugin
+  skills/                         /ccorch:ticket, /ccorch:mr, /ccorch:manage
+  agents/                         planner (opus), implementer (sonnet), reviewer (opus)
+  hooks/hooks.json                Stop/SubagentStop hook = build/test gate
+  bin/ccorch, scripts/            the `ccorch` helper (stdlib-only Python, run via uv)
+  manager/server.py, static/      settings page backend (FastAPI) + built frontend
+manager-web/                      settings page source → builds into plugins/ccorch/manager/static
+tests/                            pytest (real git repos in temp dirs, fake `claude`)
+```
+
+The `ccorch` helper (on Claude's PATH while the plugin is enabled): `context`, `start`,
+`branch-name`, `gate`, `commit`, `note`, `hold`, `resume`, `review-info`, `mr`, `finish`,
+`status`, `inbox list|show`, `init`, `manage`, `hook stop`.
