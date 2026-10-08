@@ -270,8 +270,10 @@ class Jira:
         self._call("POST", f"/rest/api/2/issue/{urllib.parse.quote(key)}/comment", {"body": text})
 
     def search_last_key(self, project: str) -> str | None:
-        """Key of the newest issue in `project` (plan 3 uses it to pick the next ticket number)."""
-        query = {"jql": f"project = {project} ORDER BY created DESC", "maxResults": "1"}
+        """Highest key in `project` (plan 3 uses it to pick the next ticket number)."""
+        # By key, not created date: an issue moved in from another project gets a new, higher
+        # key but keeps its old created date.
+        query = {"jql": f"project = {project} ORDER BY key DESC", "maxResults": "1"}
         if self.deployment == "server":
             path = "/rest/api/2/search"  # v2 (Server/DC)
             query["fields"] = "key"
@@ -328,7 +330,8 @@ def ticket_description(t: dict[str, Any]) -> str:
 def parse_issue(cfg: dict[str, Any], issue: Issue) -> dict[str, Any]:
     """Inbox ticket dict for a Jira issue (unknown issue types become `task`)."""
     head, _, tail = issue.description.partition(CRITERIA_HEADING)
-    criteria = [ln.strip() for ln in tail.splitlines() if ln.strip()] if tail else []
+    # Wiki-markup list items: "* a", "# a", "- a".
+    criteria = [c for ln in tail.splitlines() if (c := ln.strip().lstrip("*#-• \t").strip())]
     by_name = {v.lower(): k for k, v in cfg["jira"]["issue_types"].items()}
     return {
         "id": issue.key,

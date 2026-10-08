@@ -472,7 +472,15 @@ def create_app(reg: Registry, port: int = 7420) -> FastAPI:
         for draft in body.tickets:
             try:
                 ticket = inbox.normalize_ticket(draft)
-                if not jira.is_jira_key(cfg, ticket["id"]):
+                if jira.is_jira_key(cfg, ticket["id"]):
+                    # Already an issue (e.g. the transcript named PROJ-9): link it, don't create.
+                    key = ticket["id"]
+                    ticket = {
+                        **ticket,
+                        "jira_key": key,
+                        "jira_url": f"{client.base}/browse/{key}",
+                    }
+                else:
                     jc = cfg["jira"]
                     key = client.create_issue(
                         jc["project_key"],

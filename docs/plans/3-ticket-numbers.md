@@ -41,7 +41,8 @@ warning: str | None)`
     commits carrying the MR title. Run `git fetch <remote> <base>` (quiet, uses the
     `GIT_TIMEOUT_S` timeout), then scan `git log -n 2000 --format=%s%n%b <remote>/<base>`.
   - Add a `Git.ls_remote_heads()` helper. Keep everything going through the `Git.run` wrapper.
-- `numbers_jira(cfg, prefix)`: `client_for(cfg).search_last_key(project)`.
+- `numbers_jira(cfg, prefix)`: `client_for(cfg).search_last_key(project)` (it already returns the
+  highest key, ordered by key).
 - The result is always `max(local, source) + 1`, so local tickets are never reused. Pad to at least
   3 digits only when the source doesn't already use unpadded numbers: `T-001` stays as today, but
   if the remote highest is `PROJ-1412`, the next is `PROJ-1413`. Rule: use padding 3 for

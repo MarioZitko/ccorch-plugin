@@ -110,6 +110,8 @@ def test_create_get_move(fake: FakeJira) -> None:
     assert server.search_last_key("PROJ") == key
     assert any(r["path"].startswith("/rest/api/3/search/jql") for r in fake.requests)
     assert any(r["path"].startswith("/rest/api/2/search") for r in fake.requests)
+    searches = [r["path"] for r in fake.requests if "search" in r["path"]]
+    assert all("ORDER+BY+key+DESC" in p for p in searches)
 
 
 def test_ticket_text_round_trip() -> None:
@@ -119,10 +121,9 @@ def test_ticket_text_round_trip() -> None:
     issue = jira.Issue("PROJ-1", "u", "T", text, "Bug", "To Do", "")
     parsed = jira.parse_issue(cfg, issue)
     assert parsed["type"] == "bug" and parsed["description"] == "Why"
-    assert parsed["acceptance_criteria"] == ["* a", "* b"] or parsed["acceptance_criteria"] == [
-        "a",
-        "b",
-    ]
+    assert parsed["acceptance_criteria"] == ["a", "b"]
+    issue.description = "Why\n\nh3. Acceptance criteria\n# one\n- two\n\n"
+    assert jira.parse_issue(cfg, issue)["acceptance_criteria"] == ["one", "two"]
 
 
 # --- ccorch commands -----------------------------------------------------------------------
@@ -292,6 +293,20 @@ def test_inbox_create_in_jira_with_partial_failure(
     assert item["id"] == "PROJ-101" and item["jira_url"].endswith("/browse/PROJ-101")
     assert fake.issues["PROJ-101"]["fields"]["issuetype"]["name"] == "Bug"
     assert "h3. Acceptance criteria" in fake.issues["PROJ-101"]["fields"]["description"]
+
+    # A draft that already has a Jira key is linked, not created again.
+    res = client.post(
+        "/api/repos/0/inbox",
+        headers=H,
+        json={
+            "tickets": [{"id": "PROJ-9", "type": "task", "title": "Existing"}],
+            "create_in_jira": True,
+        },
+    ).json()
+    assert res == {"saved": ["PROJ-9"], "failed": []}
+    existing = next(t for t in client.get("/api/repos/0/inbox").json() if t["id"] == "PROJ-9")
+    assert existing["jira_key"] == "PROJ-9" and existing["jira_url"].endswith("/browse/PROJ-9")
+    assert "PROJ-9" not in fake.issues and "PROJ-102" not in fake.issues
 
 
 def test_issue_status_and_manual_move(client: TestClient, jira_repo: Path, fake: FakeJira) -> None:
