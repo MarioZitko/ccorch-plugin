@@ -68,7 +68,7 @@ Say in one line which path you chose and why (e.g. "Quick path: one-file bug fix
   keep the change focused.
 - `small_inline=False`: delegate to `ccorch:implementer` (model: implementer) with the ticket
   as a single phase.
-- Then run `ccorch commit --note "<1-2 line handoff>"` (uses the single-change commit message;
+- Run `ccorch ticket-check` first (see Rules), then `ccorch commit --note "<1-2 line handoff>"` (uses the single-change commit message;
   it runs the build/test gate first - on failure fix it, at most twice, then `ccorch hold`,
   report and stop).
 - If the change turns out bigger than expected (design decisions, many files), stop, say so,
@@ -90,7 +90,7 @@ then run `ccorch resume`.
 
 For each phase *i* in order:
 
-1. Delegate to `ccorch:implementer` (model: implementer). The prompt contains only: the ticket
+1. Run `ccorch ticket-check` (see Rules). Then delegate to `ccorch:implementer` (model: implementer). The prompt contains only: the ticket
    (title, description, acceptance criteria), the plan SUMMARY, phase *i* in full, and the
    handoff notes shown by `ccorch context` from earlier phases. Do not paste other phases.
 2. When it returns, run
@@ -103,7 +103,9 @@ For each phase *i* in order:
 
 ## 6. Review
 
-Skip if `review=False`, or if this was the quick path and `review_quick=False`. Otherwise run `ccorch review-model` (add `--quick` on the quick
+Run `ccorch ticket-check` (see Rules); the reviewer gets the updated ticket, and its acceptance
+criteria are what it checks against. Skip the review if `review=False`, or if this was the quick path
+and `review_quick=False`. Otherwise run `ccorch review-model` (add `--quick` on the quick
 path) and use its MODEL for every `ccorch:reviewer` call of this ticket (if it says `inherit`, omit
 the `model` parameter). Delegate to `ccorch:reviewer` with the
 ticket and the plan SUMMARY (or "single-phase change" for small tickets).
@@ -117,13 +119,24 @@ ticket and the plan SUMMARY (or "single-phase change" for small tickets).
 
 ## 7. Merge request
 
-Run `ccorch mr --description "<2-4 sentences: what changed and why, notable decisions>"`.
+Run `ccorch ticket-check` (see Rules), then `ccorch mr --description "<2-4 sentences: what changed and why, notable decisions>"`.
 It pushes the branch and opens the MR with the repo's MR rules (target, labels, draft, ...).
 
 Finish with a short report: MR link, branch, commits, low-severity findings left, anything the
 reviewer or implementer flagged as open, and any `Jira:` lines `ccorch` printed.
 
 ## Rules
+
+- The user can edit the ticket in the settings page while you work. Run `ccorch ticket-check`
+  before step 5.1 of every phase, before step 6, and before step 7. On the quick path, run it
+  before `ccorch commit`. It prints `Ticket unchanged.` or `TICKET UPDATED` with what changed and
+  the full new ticket. After an update, use the new text from then on:
+  - Plan path: if the change affects phases not yet done, update those phases yourself when the
+    change is small. If it is substantial (new scope, contradicts finished phases), run
+    `ccorch hold`, show the user what changed and your proposed plan change, then `ccorch resume`.
+    Finished phases are not redone; anything missing becomes an extra phase.
+  - Review: give the reviewer the updated ticket.
+  - MR: the MR title uses the updated title automatically.
 
 - Only `ccorch` creates branches, commits and pushes. Never run `git commit`, `push`,
   `checkout`, `switch`, `reset`, `stash` or `rebase` yourself.

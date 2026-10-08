@@ -29,6 +29,7 @@ class TicketState:
     commits: list[str] = field(default_factory=list)
     mr_url: str | None = None
     jira_key: str | None = None  # set when the ticket is a Jira issue
+    ticket_revision: int = 0  # inbox revision the session last read (see `ccorch ticket-check`)
     review_model: str | None = None  # chosen once per ticket so review rounds stay comparable
     notes: list[str] = field(default_factory=list)  # handoff notes between phases
 

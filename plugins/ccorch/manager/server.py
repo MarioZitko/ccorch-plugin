@@ -107,6 +107,15 @@ class InboxBody(BaseModel):
     create_in_jira: bool = False
 
 
+class InboxEditBody(BaseModel):
+    id: str | None = None
+    type: str | None = None
+    size: str | None = None
+    title: str | None = None
+    description: str | None = None
+    acceptance_criteria: list[str] | None = None
+
+
 class JiraCredsBody(BaseModel):
     url: str
     email: str = ""
@@ -587,6 +596,42 @@ def create_app(reg: Registry, port: int = 7420) -> FastAPI:
         if result == "no_transition":
             raise HTTPException(400, f"The workflow has no transition to {body.status!r}")
         return {"result": result}
+
+    @app.put("/api/repos/{repo_id}/inbox/{ticket_id}")
+    def edit_inbox(repo_id: int, ticket_id: str, body: InboxEditBody) -> dict[str, Any]:
+        path, inbox = _inbox(repo_id)
+        before = inbox.get(ticket_id)
+        if before is None:
+            raise HTTPException(404, "ticket not in inbox")
+        try:
+            ticket = inbox.update(ticket_id, body.model_dump(exclude_none=True))
+        except InboxError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        active = inbox.store.active()
+        out: dict[str, Any] = {
+            "ticket": ticket,
+            "running": active is not None and active.ticket_id == before["id"],
+        }
+        text_fields = ("title", "description", "acceptance_criteria")
+        if ticket.get("jira_key") and any(ticket[f] != before[f] for f in text_fields):
+            out["jira"] = _push_to_jira(path, inbox, ticket)
+        return out
+
+    def _push_to_jira(path: Path, inbox: Inbox, ticket: dict[str, Any]) -> str:
+        """Send an edit to the linked Jira issue. A failure is a warning, never a failed save."""
+        try:
+            cfg = config.load(path)
+            client = jira.client_for(cfg)
+            if client is None:
+                return "Not sent to Jira: it is off for this repo or no login is saved"
+            key = str(ticket["jira_key"])
+            client.update_issue(key, ticket["title"], jira.ticket_description(ticket))
+            # Remember Jira's new timestamp so `ccorch ticket-check` doesn't read our own edit back.
+            issue = client.get_issue(key)
+            inbox.update(ticket["id"], {"jira_status": issue.status, "jira_updated": issue.updated})
+            return "updated"
+        except Exception as exc:
+            return f"Saved here, but Jira was not updated: {exc}"
 
     @app.delete("/api/repos/{repo_id}/inbox/{ticket_id}")
     def delete_inbox(repo_id: int, ticket_id: str) -> dict[str, bool]:

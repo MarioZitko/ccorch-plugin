@@ -27,6 +27,7 @@ into tickets and updates the plugin.
 | Ticket state + history in `.git/ccorch/` | `ccorch_lib/state.py` |
 | Inbox (`.git/ccorch/inbox/*.json`, ids like `T-001`); `ccorch inbox add` | `ccorch_lib/inbox.py` |
 | Next ticket number (local / remote branches + base history / Jira), `ccorch next-id`, `GET /api/repos/{id}/next-id`, UI `NumbersSection` + Inbox **+ New ticket** | `ccorch_lib/ticket_ids.py`, `git.ls_remote_heads`; `tests/test_ticket_ids.py` |
+| Edit inbox tickets any time; running session picks it up (`revision`, `history`, `Inbox.update`, `ccorch ticket-check`, `PUT /api/repos/{id}/inbox/{tid}`, UI `TicketFields`/Edit in `InboxView.tsx`) | `ccorch_lib/inbox.py`, `state.ticket_revision`, `cli.cmd_ticket_check`; `tests/test_inbox.py` |
 | Transcript → tickets (one tool-less headless call, JSON schema) | `ccorch_lib/intake.py`, `ccorch_lib/claude.py` |
 | Detect repo defaults; plan/apply install (toml, settings.json merge, .gitignore) | `ccorch_lib/install.py` |
 | Open a terminal running `claude "/ccorch:ticket ID"` (macOS/Windows/Linux) | `ccorch_lib/terminal.py` |
@@ -127,6 +128,8 @@ then restart Claude Code.
   a real Jira (fake server only).
 - Everything Jira against a real Jira Cloud and a real Server/Data Center (tests only use
   `tests/fake_jira.py`): auth, v2 plain-text descriptions on Cloud, `search/jql`, workflow moves.
+- A running session actually picking up an edit through `ccorch ticket-check` (the skill rule
+  and plan adjustment on a big change), and Jira edit sync against a real Jira.
 - Anything on Windows: hook execution, `bin/ccorch`, **Open in Claude Code** (`wt`/`cmd`).
 - **Open in Claude Code** on macOS was not clicked (it opens Terminal via `osascript`).
 

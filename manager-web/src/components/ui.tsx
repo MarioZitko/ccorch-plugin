@@ -60,10 +60,12 @@ export function TextInput(props: {
   onChange: (v: string) => void;
   placeholder?: string;
   mono?: boolean;
+  disabled?: boolean;
 }) {
   return (
     <input
       className={`input ${props.mono ? "font-mono" : ""}`}
+      disabled={props.disabled}
       value={props.value}
       placeholder={props.placeholder}
       onChange={(e) => props.onChange(e.target.value)}

@@ -210,6 +210,7 @@ export default function App() {
                 ) : tab === "inbox" ? (
                   <InboxView
                     repoId={repo.id}
+                    activeTicketId={repo.active_ticket?.ticket_id}
                     intakeModel={loaded?.config.models.intake ?? "haiku"}
                     jira={loaded?.config.jira}
                     notify={(m, err) => notify(m, err ? "err" : "ok")}

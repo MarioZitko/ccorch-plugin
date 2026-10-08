@@ -140,7 +140,8 @@ Check which version you have with `claude plugin list`.
 | `/ccorch:manage` | Open the settings page. |
 
 `ccorch` also has helper commands that Claude (or you) can run: `ccorch jira status [KEY]`,
-`ccorch jira show KEY` and `ccorch jira move KEY "Status"` (see [Jira](#jira)), `ccorch next-id`
+`ccorch jira show KEY` and `ccorch jira move KEY "Status"` (see [Jira](#jira)), `ccorch ticket-check` (prints the ticket only
+if you edited it since Claude last read it), `ccorch next-id`
 (prints the next free ticket number) and `ccorch inbox add --type bug --title "…"` (saves a ticket
 to the inbox; also `--description`, `--criteria` (repeatable), `--size small|big`, `--id`).
 
@@ -189,6 +190,17 @@ Open it with `/ccorch:manage`. It runs only on your computer (`127.0.0.1`).
    ticket's size), *quick (no plan)* or *with plan* - then **Open in Claude Code** (opens a terminal
    in the repo running `/ccorch:ticket T-001`) or copy the command. The ticket skill reads the full ticket from the
    inbox. Inbox tickets are stored in `.git/ccorch/inbox/` and never committed.
+5. **Edit a ticket any time** - even while Claude Code is working on it. Click **Edit** on its
+   card, change the type, size, title, description or acceptance criteria, and **Save**. A running
+   `/ccorch:ticket` session checks for changes before each phase, before the review and before the
+   merge request, and uses the new text from then on; a big change makes it pause and ask you.
+   It does not interrupt a step that is already running. The id can only change while the ticket
+   is still *queued* (the branch is named after it). After the start, a new title is used for
+   later commits and the merge request, but the branch keeps its name and a new type does not
+   change its prefix. If the ticket is linked to a Jira issue, the edit is sent to Jira too, and
+   text changed in Jira is picked up at the next check.
+   Cards show `edited · rev N`, and `done` (merge request opened) or `abandoned`. A finished
+   ticket can still be edited, but the change won't reach the merge request.
 
 Short one-shot steps like this run in the background and show their result in the settings page.
 Everything that changes code runs in Claude Code, where you can watch and steer it.

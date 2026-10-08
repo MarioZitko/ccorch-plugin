@@ -12,7 +12,7 @@ from typing import Any
 
 from ccorch_lib import branch, config, gate, install, jira, mr, ticket_ids
 from ccorch_lib.git import Git, GitError, find_root
-from ccorch_lib.inbox import Inbox, InboxError, to_markdown
+from ccorch_lib.inbox import Inbox, InboxError, changed_fields, to_markdown
 from ccorch_lib.state import StateStore, TicketState
 
 HOOK_TAIL_LINES = 80
@@ -192,6 +192,9 @@ def cmd_context(args: argparse.Namespace) -> int:
         )
         for note in state.notes[-5:]:
             print(f"  - note: {note}")
+        record = Inbox(ctx.store).get(state.ticket_id)
+        if record and int(record.get("revision", 1)) > state.ticket_revision:
+            print("- TICKET UPDATED since the session last read it - run `ccorch ticket-check`")
     else:
         print("- Active ticket: none")
     return 0
@@ -232,6 +235,7 @@ def cmd_start(args: argparse.Namespace) -> int:
     state.jira_key = (record or {}).get("jira_key") or (
         args.id if jira.is_jira_key(ctx.cfg, args.id) else None
     )
+    state.ticket_revision = int(record.get("revision", 1)) if record else 0
     ctx.store.save(state)
     inbox.mark_started(args.id, name)
     print(f"Created branch {name} from {ctx.git.base_ref(base)}")
@@ -358,6 +362,7 @@ def cmd_mr(args: argparse.Namespace) -> int:
     result = ctx.git.push_with_options(state.branch, options)
     state.mr_url = result.mr_url
     ctx.store.finish(state, "mr_opened")
+    Inbox(ctx.store).mark_finished(state.ticket_id, "done", result.mr_url)
     if result.mr_url:
         print(f"MR: {result.mr_url}")
     else:
@@ -379,6 +384,9 @@ def cmd_finish(args: argparse.Namespace) -> int:
         print("No active ticket.")
         return 0
     ctx.store.finish(state, args.outcome)
+    Inbox(ctx.store).mark_finished(
+        state.ticket_id, "abandoned" if args.outcome == "abandoned" else "done"
+    )
     print(f"Ticket {state.ticket_id} finished ({args.outcome}).")
     if args.outcome in config.JIRA_EVENTS:
         _jira_event(ctx, state, args.outcome)
@@ -455,6 +463,52 @@ def cmd_inbox(args: argparse.Namespace) -> int:
         print("Inbox is empty.")
     for t in items:
         print(f"{t['id']:<14} {t['status']:<8} {t['type']:<8} {t['title']}")
+    return 0
+
+
+def _pull_jira_edits(ctx: Ctx, inbox: Inbox, record: dict[str, Any]) -> None:
+    """Take text someone edited in Jira into the inbox. One warning line on any failure."""
+    jc = ctx.cfg["jira"]
+    if not jc["enabled"] or not record.get("jira_key"):
+        return
+    try:
+        client = jira.client_for(ctx.cfg)
+        if client is None:
+            return
+        issue = client.get_issue(str(record["jira_key"]))
+        if not issue.updated or issue.updated <= str(record.get("jira_updated", "")):
+            return
+        parsed = jira.parse_issue(ctx.cfg, issue)
+        # Type and size stay as edited here: Jira's issue types may not map back one to one.
+        changes = {
+            k: parsed[k]
+            for k in ("title", "description", "acceptance_criteria", "jira_status", "jira_updated")
+        }
+        inbox.update(str(record["id"]), changes)
+    except Exception as exc:  # Jira trouble must never break the check
+        print(f"Jira warning: {exc}")
+
+
+def cmd_ticket_check(args: argparse.Namespace) -> int:
+    """Print the ticket only if it was edited since the session last read it."""
+    ctx = Ctx(Path.cwd())
+    state = ctx.require_active()
+    inbox = Inbox(ctx.store)
+    record = inbox.get(state.ticket_id)
+    if record is not None:
+        _pull_jira_edits(ctx, inbox, record)
+        record = inbox.get(state.ticket_id)
+    revision = int(record.get("revision", 1)) if record else 0
+    if record is None or revision <= state.ticket_revision:
+        print("Ticket unchanged.")
+        return 0
+    when = str(record.get("updated_at", "")).replace("T", " ")[:16]
+    print(f"TICKET UPDATED (revision {revision}, edited {when}):")
+    print(f"Changed: {', '.join(changed_fields(record, state.ticket_revision)) or 'details'}")
+    print(to_markdown(record))
+    state.ticket_revision = revision
+    state.title = str(record["title"])
+    ctx.store.save(state)
     return 0
 
 
@@ -696,6 +750,10 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("next-id", help="the next free ticket number(s)")
     sp.add_argument("--count", type=int, default=1)
     sp.set_defaults(fn=cmd_next_id)
+
+    sub.add_parser("ticket-check", help="print the ticket only if it was edited").set_defaults(
+        fn=cmd_ticket_check
+    )
 
     sp = sub.add_parser("jira", help="show or move a Jira issue")
     sp.add_argument("action", choices=["status", "show", "move"])

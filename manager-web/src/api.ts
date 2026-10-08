@@ -72,8 +72,11 @@ export interface TicketDraft {
 }
 
 export interface InboxTicket extends TicketDraft {
-  status: "queued" | "started";
+  status: "queued" | "started" | "done" | "abandoned";
   created_at: string;
+  revision?: number;
+  updated_at?: string;
+  mr_url?: string;
   branch?: string;
   jira_key?: string;
   jira_url?: string;
@@ -272,6 +275,12 @@ export const api = {
     call<{ result: string }>("POST", `/api/repos/${id}/jira/issue/${encodeURIComponent(key)}/move`, {
       status,
     }),
+  updateInbox: (id: number, tid: string, ticket: Partial<TicketDraft>) =>
+    call<{ ticket: InboxTicket; running: boolean; jira?: string }>(
+      "PUT",
+      `/api/repos/${id}/inbox/${encodeURIComponent(tid)}`,
+      ticket,
+    ),
   deleteInbox: (id: number, tid: string) =>
     call<{ deleted: boolean }>("DELETE", `/api/repos/${id}/inbox/${encodeURIComponent(tid)}`),
   inboxCommand: (id: number, tid: string, mode: StartMode) =>

@@ -1,3 +1,4 @@
+import type React from "react";
 import { useCallback, useEffect, useState } from "react";
 import {
   api,
@@ -12,16 +13,24 @@ import { Badge, Select, TextInput } from "./ui";
 
 const TYPES: TicketType[] = ["feature", "bug", "task"];
 
-function DraftCard(props: {
+function TicketFields(props: {
   t: TicketDraft;
   onChange: (t: TicketDraft) => void;
-  onRemove: () => void;
+  onRemove?: () => void;
+  idLockedReason?: string;
 }) {
   const { t, onChange } = props;
   return (
-    <div className="card grid gap-3 p-4">
+    <div className="grid gap-3">
       <div className="grid gap-2 sm:grid-cols-[9rem_8rem_6.5rem_1fr_auto]">
-        <TextInput mono value={t.id} onChange={(id) => onChange({ ...t, id })} />
+        <div title={props.idLockedReason}>
+          <TextInput
+            mono
+            value={t.id}
+            disabled={!!props.idLockedReason}
+            onChange={(id) => onChange({ ...t, id })}
+          />
+        </div>
         <Select value={t.type} options={TYPES} onChange={(v) => onChange({ ...t, type: v as TicketType })} />
         <Select
           value={t.size}
@@ -29,9 +38,11 @@ function DraftCard(props: {
           onChange={(v) => onChange({ ...t, size: v as "small" | "big" })}
         />
         <TextInput value={t.title} onChange={(title) => onChange({ ...t, title })} />
-        <button type="button" className="btn px-2" title="Drop this ticket" onClick={props.onRemove}>
-          ✕
-        </button>
+        {props.onRemove && (
+          <button type="button" className="btn px-2" title="Drop this ticket" onClick={props.onRemove}>
+            ✕
+          </button>
+        )}
       </div>
       <textarea
         className="input min-h-20 text-sm"
@@ -45,6 +56,18 @@ function DraftCard(props: {
         value={t.acceptance_criteria.join("\n")}
         onChange={(e) => onChange({ ...t, acceptance_criteria: e.target.value.split("\n") })}
       />
+    </div>
+  );
+}
+
+function DraftCard(props: {
+  t: TicketDraft;
+  onChange: (t: TicketDraft) => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="card p-4">
+      <TicketFields t={props.t} onChange={props.onChange} onRemove={props.onRemove} />
     </div>
   );
 }
@@ -97,10 +120,47 @@ function JiraMove(props: { repoId: number; t: InboxTicket; notify: (m: string, e
   );
 }
 
-function QueuedCard(props: { repoId: number; t: InboxTicket; onChanged: () => void; notify: (m: string, err?: boolean) => void }) {
+function Banner(props: { children: React.ReactNode }) {
+  return (
+    <p className="rounded-md bg-indigo-50 p-3 text-sm text-indigo-900 dark:bg-indigo-950/50 dark:text-indigo-200">
+      {props.children}
+    </p>
+  );
+}
+
+function QueuedCard(props: {
+  repoId: number;
+  t: InboxTicket;
+  running: boolean;
+  onChanged: () => void;
+  notify: (m: string, err?: boolean) => void;
+}) {
   const { t, repoId } = props;
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<StartMode>("");
+  const [edit, setEdit] = useState<TicketDraft | null>(null);
+  const finished = t.status === "done" || t.status === "abandoned";
+
+  const save = async () => {
+    if (!edit) return;
+    try {
+      const res = await api.updateInbox(repoId, t.id, {
+        ...edit,
+        acceptance_criteria: edit.acceptance_criteria.filter((c) => c.trim()),
+      });
+      setEdit(null);
+      props.onChanged();
+      if (res.jira && res.jira !== "updated") props.notify(res.jira, true);
+      else
+        props.notify(
+          res.running
+            ? `Saved ${t.id}. Claude Code picks it up at its next step.`
+            : `Saved ${t.id}${res.jira ? " (and updated in Jira)" : ""}`,
+        );
+    } catch (e) {
+      props.notify((e as Error).message, true);
+    }
+  };
 
   const copy = async (shell: boolean) => {
     const cmd = await api.inboxCommand(repoId, t.id, mode);
@@ -114,7 +174,14 @@ function QueuedCard(props: { repoId: number; t: InboxTicket; onChanged: () => vo
         <span className="font-mono text-sm font-semibold">{t.id}</span>
         <Badge tone={t.type === "bug" ? "amber" : "indigo"}>{t.type}</Badge>
         <Badge tone="zinc">{t.size}</Badge>
-        {t.status === "started" ? <Badge tone="green">started</Badge> : <Badge tone="zinc">queued</Badge>}
+        {t.status === "started" ? (
+          <Badge tone="green">started</Badge>
+        ) : finished ? (
+          <Badge tone={t.status === "done" ? "indigo" : "amber"}>{t.status}</Badge>
+        ) : (
+          <Badge tone="zinc">queued</Badge>
+        )}
+        {(t.revision ?? 1) > 1 && <span className="text-xs text-zinc-500">edited · rev {t.revision}</span>}
         {t.jira_url && (
           <a className="text-xs text-indigo-600 hover:underline" href={t.jira_url} target="_blank" rel="noreferrer">
             Jira ↗
@@ -122,6 +189,25 @@ function QueuedCard(props: { repoId: number; t: InboxTicket; onChanged: () => vo
         )}
         {t.jira_status && <Badge tone="indigo">{t.jira_status}</Badge>}
         <div className="ml-auto flex gap-1.5 whitespace-nowrap">
+          <button
+            type="button"
+            className="btn py-1 text-xs"
+            disabled={edit !== null}
+            onClick={() => {
+              setOpen(true);
+              setEdit({
+                id: t.id,
+                type: t.type,
+                size: t.size,
+                title: t.title,
+                description: t.description,
+                acceptance_criteria: t.acceptance_criteria,
+              });
+            }}
+          >
+            Edit
+          </button>
+          {!finished && (<>
           <select
             className="input py-1 text-xs"
             style={{ width: "auto" }}
@@ -152,6 +238,7 @@ function QueuedCard(props: { repoId: number; t: InboxTicket; onChanged: () => vo
           <button type="button" className="btn py-1 text-xs" onClick={() => copy(true)} title="Copy a shell command that starts Claude Code with it">
             Copy for terminal
           </button>
+          </>)}
           <button
             type="button"
             className="btn px-2 py-1 text-xs"
@@ -166,7 +253,51 @@ function QueuedCard(props: { repoId: number; t: InboxTicket; onChanged: () => vo
         {open ? "▾" : "▸"} {t.title}
       </button>
       {t.branch && <div className="mt-1 font-mono text-xs text-zinc-500">{t.branch}</div>}
-      {open && (
+      {t.mr_url && (
+        <a className="text-xs text-indigo-600 hover:underline" href={t.mr_url} target="_blank" rel="noreferrer">
+          Merge request ↗
+        </a>
+      )}
+      {edit && (
+        <div className="mt-3 grid gap-3">
+          {props.running ? (
+            <Banner>
+              Claude Code is working on this ticket. It picks up your change before its next step
+              (next phase, review or merge request).
+            </Banner>
+          ) : finished ? (
+            <Banner>The merge request is already open - this change won&apos;t reach it.</Banner>
+          ) : t.status === "started" ? (
+            <Banner>Started on {t.branch}.</Banner>
+          ) : null}
+          {t.status === "started" && (
+            <p className="text-xs text-zinc-500">
+              The branch keeps its name, so a new type won&apos;t change the branch prefix. A new
+              title is used for later commits and the merge request.
+            </p>
+          )}
+          <TicketFields
+            t={edit}
+            onChange={setEdit}
+            idLockedReason={
+              t.status !== "queued"
+                ? "The branch is named after the id"
+                : t.jira_key
+                  ? "The id is the Jira key"
+                  : undefined
+            }
+          />
+          <div className="flex gap-2">
+            <button type="button" className="btn btn-primary" onClick={save}>
+              Save
+            </button>
+            <button type="button" className="btn" onClick={() => setEdit(null)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+      {open && !edit && (
         <div className="mt-3 grid gap-2 text-sm">
           {t.jira_key && <JiraMove repoId={repoId} t={t} notify={props.notify} />}
           <p className="whitespace-pre-wrap text-zinc-700 dark:text-zinc-300">{t.description || "(no description)"}</p>
@@ -183,7 +314,7 @@ function QueuedCard(props: { repoId: number; t: InboxTicket; onChanged: () => vo
   );
 }
 
-export function InboxView(props: { repoId: number; intakeModel: string; jira?: Config["jira"]; notify: (m: string, err?: boolean) => void }) {
+export function InboxView(props: { repoId: number; activeTicketId?: string; intakeModel: string; jira?: Config["jira"]; notify: (m: string, err?: boolean) => void }) {
   const { repoId, notify } = props;
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -326,7 +457,7 @@ export function InboxView(props: { repoId: number; intakeModel: string; jira?: C
         {queued.length === 0 ? (
           <p className="text-sm text-zinc-500">No tickets waiting.</p>
         ) : (
-          queued.map((t) => <QueuedCard key={t.id} repoId={repoId} t={t} onChanged={load} notify={notify} />)
+          queued.map((t) => <QueuedCard key={t.id} repoId={repoId} t={t} running={t.id === props.activeTicketId} onChanged={load} notify={notify} />)
         )}
       </section>
     </div>
