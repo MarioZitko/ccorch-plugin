@@ -24,9 +24,10 @@ export interface Config {
     review_quick: boolean;
     max_fix_iterations: number;
     small_inline: boolean;
+    small_review_max_lines: number;
   };
   intake: { id_prefix: string };
-  models: { intake: string; planner: string; implementer: string; reviewer: string };
+  models: { intake: string; planner: string; implementer: string; reviewer: string; reviewer_small: string };
 }
 
 export interface TicketDraft {

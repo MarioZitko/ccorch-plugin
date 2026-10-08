@@ -160,6 +160,17 @@ class Git:
     def diff_stat(self, base: str) -> str:
         return self.run("diff", "--stat", f"{self.base_ref(base)}...HEAD").stdout
 
+    def changed_lines(self, base: str) -> int:
+        """Inserted + deleted lines vs the base; binary files count 0."""
+        out = self.run("diff", "--numstat", f"{self.base_ref(base)}...HEAD").stdout
+        total = 0
+        for line in out.splitlines():
+            added, _, rest = line.partition("\t")
+            deleted = rest.partition("\t")[0]
+            if added.isdigit() and deleted.isdigit():
+                total += int(added) + int(deleted)
+        return total
+
     def push_with_options(self, branch: str, options: list[str]) -> PushResult:
         args = ["push", "-u", self.remote, branch]
         for opt in options:

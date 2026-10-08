@@ -95,7 +95,9 @@ For each phase *i* in order:
 
 ## 6. Review
 
-Skip if `review=False`, or if this was the quick path and `review_quick=False`. Otherwise delegate to `ccorch:reviewer` (model: reviewer) with the
+Skip if `review=False`, or if this was the quick path and `review_quick=False`. Otherwise run `ccorch review-model` (add `--quick` on the quick
+path) and use its MODEL for every `ccorch:reviewer` call of this ticket (if it says `inherit`, omit
+the `model` parameter). Delegate to `ccorch:reviewer` with the
 ticket and the plan SUMMARY (or "single-phase change" for small tickets).
 
 - Blocking findings = high and medium. If none: go to step 7.

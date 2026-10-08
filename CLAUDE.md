@@ -16,7 +16,7 @@ into tickets and updates the plugin.
 |---|---|
 | `/ccorch:ticket` workflow (steps 0-7, quick vs plan path, flags `quick` `plan` `auto`) | `plugins/ccorch/skills/ticket/SKILL.md` |
 | `/ccorch:mr`, `/ccorch:manage` | `skills/mr/SKILL.md`, `skills/manage/SKILL.md` |
-| Subagents: planner (opus, read-only), implementer (sonnet), reviewer (opus, read-only) | `plugins/ccorch/agents/*.md` |
+| Subagents: planner (opus, read-only), implementer (sonnet), reviewer (opus, read-only); `ccorch review-model` picks the reviewer model (cheaper for small changes) | `plugins/ccorch/agents/*.md`, `cli.cmd_review_model` |
 | Build/test gate on Stop + SubagentStop(`ccorch:implementer`) | `hooks/hooks.json` → `ccorch hook stop` → `cli.hook_stop` |
 | `ccorch` helper CLI (all deterministic steps) | `bin/ccorch` → `scripts/ccorch.py` → `scripts/ccorch_lib/cli.py` |
 | Per-repo config, defaults, validation, TOML writer | `ccorch_lib/config.py` |

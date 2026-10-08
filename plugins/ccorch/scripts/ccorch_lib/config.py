@@ -57,6 +57,7 @@ DEFAULTS: dict[str, Any] = {
         "review_quick": True,
         "max_fix_iterations": 2,
         "small_inline": True,
+        "small_review_max_lines": 150,
     },
     "intake": {
         "id_prefix": "T",
@@ -66,10 +67,11 @@ DEFAULTS: dict[str, Any] = {
         "planner": "opus",
         "implementer": "sonnet",
         "reviewer": "opus",
+        "reviewer_small": "sonnet",
     },
 }
 
-MODEL_ROLES = ("intake", "planner", "implementer", "reviewer")
+MODEL_ROLES = ("intake", "planner", "implementer", "reviewer", "reviewer_small")
 PLANNING_CHOICES = ("auto", "always", "never")
 _ID_PREFIX = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,15}$")
 
@@ -198,6 +200,14 @@ def validate(cfg: dict[str, Any]) -> None:
     _expect(
         isinstance(wf["max_fix_iterations"], int) and 0 <= wf["max_fix_iterations"] <= 5,
         "workflow.max_fix_iterations must be between 0 and 5",
+        errors,
+    )
+
+    _expect(
+        isinstance(wf["small_review_max_lines"], int)
+        and not isinstance(wf["small_review_max_lines"], bool)
+        and 0 <= wf["small_review_max_lines"] <= 5000,
+        "workflow.small_review_max_lines must be between 0 and 5000",
         errors,
     )
 

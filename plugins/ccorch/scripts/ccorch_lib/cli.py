@@ -132,6 +132,11 @@ def cmd_context(args: argparse.Namespace) -> int:
             for role in ("planner", "implementer", "reviewer")
         )
     )
+    print(
+        f"- Small-change reviewer: reviewer_small={_model_label(cfg['models']['reviewer_small'])} "
+        f"(quick path or <= {wf['small_review_max_lines']} changed lines); "
+        "run `ccorch review-model` to get the model to use"
+    )
     if state:
         print(
             f'- ACTIVE TICKET: {state.ticket_id} ({state.type}) "{state.title}" on '
@@ -249,6 +254,29 @@ def cmd_review_info(args: argparse.Namespace) -> int:
     print(f"Diff range: {base_ref}...HEAD  (run `git diff {base_ref}...HEAD` for the full diff)")
     print(ctx.git.run("log", "--oneline", f"{base_ref}..HEAD").stdout)
     print(ctx.git.diff_stat(state.base))
+    return 0
+
+
+def cmd_review_model(args: argparse.Namespace) -> int:
+    """Pick the reviewer model once per ticket: small changes get the cheaper one."""
+    ctx = Ctx(Path.cwd())
+    state = ctx.require_active()
+    models = ctx.cfg["models"]
+    limit = ctx.cfg["workflow"]["small_review_max_lines"]
+    if state.review_model is not None:
+        model, reason = state.review_model, "same as earlier review rounds"
+    else:
+        lines = ctx.git.changed_lines(state.base)
+        if args.quick:
+            model, reason = models["reviewer_small"], "quick path"
+        elif limit > 0 and lines <= limit:
+            model, reason = models["reviewer_small"], f"{lines} changed lines (<= {limit})"
+        else:
+            model, reason = models["reviewer"], f"{lines} changed lines"
+        state.review_model = model
+        ctx.store.save(state)
+    print(f"MODEL: {_model_label(model)}")
+    print(f"REASON: {reason}")
     return 0
 
 
@@ -486,6 +514,10 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("review-info", help="commits + diffstat vs base").set_defaults(
         fn=cmd_review_info
     )
+
+    sp = sub.add_parser("review-model", help="pick the reviewer model for this ticket")
+    sp.add_argument("--quick", action="store_true", help="the change took the quick path")
+    sp.set_defaults(fn=cmd_review_model)
 
     sp = sub.add_parser("mr", help="push and open the GitLab MR via push options")
     sp.add_argument("--title")

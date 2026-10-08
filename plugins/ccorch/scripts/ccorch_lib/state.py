@@ -28,6 +28,7 @@ class TicketState:
     last_gate_pass: str | None = None  # tree fingerprint of the last passing gate
     commits: list[str] = field(default_factory=list)
     mr_url: str | None = None
+    review_model: str | None = None  # chosen once per ticket so review rounds stay comparable
     notes: list[str] = field(default_factory=list)  # handoff notes between phases
 
 

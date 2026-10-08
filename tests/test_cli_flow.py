@@ -134,3 +134,58 @@ def test_cmd_hook_reads_stdin(
     monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps({"cwd": str(configured)})))
     assert cli.main(["hook", "stop"]) == 0
     assert capsys.readouterr().out == ""
+
+
+def _review_model(capsys: pytest.CaptureFixture[str], *flags: str) -> tuple[str, str]:
+    capsys.readouterr()
+    assert cli.main(["review-model", *flags]) == 0
+    out = capsys.readouterr().out.splitlines()
+    return out[0], out[1]
+
+
+def _commit_lines(repo: Path, count: int, name: str = "big.txt") -> None:
+    (repo / name).write_text("ok\n" * count)
+    git(repo, "add", "-A")
+    git(repo, "commit", "-m", f"add {count} lines")
+    git(repo, "push", "-u", "origin", "HEAD")
+
+
+def test_review_model_by_size_and_quick(
+    configured: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = configured
+    cli.main(["start", "--id", "R-1", "--type", "task", "--title", "small"])
+    _commit_lines(repo, 42)
+    assert _review_model(capsys) == ("MODEL: sonnet", "REASON: 42 changed lines (<= 150)")
+    # Stored: stays the same after the diff grows past the limit.
+    _commit_lines(repo, 900, "more.txt")
+    assert _review_model(capsys) == ("MODEL: sonnet", "REASON: same as earlier review rounds")
+
+    cli.main(["finish"])
+    cli.main(["start", "--id", "R-2", "--type", "task", "--title", "big"])
+    _commit_lines(repo, 900, "huge.txt")
+    assert _review_model(capsys) == ("MODEL: opus", "REASON: 900 changed lines")
+
+    cli.main(["finish"])
+    cli.main(["start", "--id", "R-3", "--type", "task", "--title", "quick"])
+    _commit_lines(repo, 900, "q.txt")
+    assert _review_model(capsys, "--quick") == ("MODEL: sonnet", "REASON: quick path")
+
+
+def test_review_model_limit_zero_and_inherit(
+    configured: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = configured
+    cfg = config.load(repo)
+    cfg["workflow"]["small_review_max_lines"] = 0
+    cfg["models"]["reviewer"] = "inherit"
+    config.write(repo, cfg)
+    git(repo, "add", "-A")
+    git(repo, "commit", "-m", "cfg")
+    git(repo, "push")
+    cli.main(["start", "--id", "R-4", "--type", "task", "--title", "t"])
+    _commit_lines(repo, 3)
+    assert _review_model(capsys) == (
+        "MODEL: inherit (omit the model parameter)",
+        "REASON: 3 changed lines",
+    )

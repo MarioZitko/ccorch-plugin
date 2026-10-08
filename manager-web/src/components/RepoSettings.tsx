@@ -171,6 +171,17 @@ export function RepoSettings(props: { repoId: number; meta: Meta; config: Config
               onChange={(v) => update((x) => void (x.workflow.max_fix_iterations = v))}
             />
           </Field>
+          <Field
+            label="Small change = up to N changed lines"
+            hint="Quick-path changes and plan-path changes up to this size are reviewed by the small-change reviewer. 0 = only quick-path changes."
+          >
+            <NumberInput
+              min={0}
+              max={5000}
+              value={c.workflow.small_review_max_lines}
+              onChange={(v) => update((x) => void (x.workflow.small_review_max_lines = v))}
+            />
+          </Field>
         </Row>
       </Section>
 
@@ -179,7 +190,7 @@ export function RepoSettings(props: { repoId: number; meta: Meta; config: Config
         hint="Aliases use the newest model your installed Claude Code knows - keep the CLI updated. inherit = the agent's built-in default (planner opus, implementer sonnet, reviewer opus; for intake, your Claude Code default model). Personal overrides: .claude/ccorch.local.toml."
       >
         <Row>
-          {(["intake", "planner", "implementer", "reviewer"] as const).map((role) => (
+          {(["intake", "planner", "implementer", "reviewer", "reviewer_small"] as const).map((role) => (
             <Field key={role} label={MODEL_LABELS[role]}>
               <Select
                 value={c.models[role]}
@@ -214,6 +225,7 @@ const MODEL_LABELS = {
   planner: "Planner",
   implementer: "Implementer",
   reviewer: "Reviewer",
+  reviewer_small: "Reviewer for small changes",
 } as const;
 
 function BranchSection(props: { config: Config; update: Update; meta: Meta }) {

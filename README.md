@@ -77,7 +77,8 @@ seconds while uv downloads its dependencies). Then:
    - **Branch naming** - template and prefixes, with a live preview,
    - **Build & test gate** - click **Run gate now** to check the commands work,
    - **Merge request** - target branch, title, labels, assignee, draft, squash, delete branch,
-   - **Models** - which model plans, codes, reviews and reads transcripts.
+   - **Models** - which model plans, codes, reviews (a cheaper one for small changes) and reads
+     transcripts.
 3. **Review & install** shows exactly which files will change → **Write files**.
 4. Commit the new files (`.claude/ccorch.toml`, `.claude/settings.json`, `.gitignore`).
 
@@ -201,6 +202,8 @@ with the two commands from [step 2](#2-install-the-plugin).
 - Each phase runs in a fresh subagent with only the ticket, the plan summary, its own phase and
   short notes from earlier phases, so the main session stays small.
 - The build/test result is cached by the exact state of the files, so nothing is rebuilt twice.
+- Small changes are reviewed by a cheaper model (default sonnet); big ones by the reviewer model
+  (default opus).
 - Transcript → tickets is a single small Haiku call.
 
 ## Troubleshooting
@@ -264,5 +267,5 @@ tests/                            pytest (real git repos in temp dirs, fake `cla
 ```
 
 The `ccorch` helper (on Claude's PATH while the plugin is enabled): `context`, `start`,
-`branch-name`, `gate`, `commit`, `note`, `hold`, `resume`, `review-info`, `mr`, `finish`,
+`branch-name`, `gate`, `commit`, `note`, `hold`, `resume`, `review-info`, `review-model`, `mr`, `finish`,
 `status`, `inbox list|show`, `init`, `manage`, `hook stop`.

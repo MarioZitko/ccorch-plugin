@@ -47,14 +47,22 @@ def test_validation_lists_problems() -> None:
         {
             "branch": {"template": "{type}/{slug}"},
             "mr": {"title": "{oops}", "draft": "yes"},
-            "models": {"planner": "gpt"},
-            "workflow": {"planning": "sometimes"},
+            "models": {"planner": "gpt", "reviewer_small": "big"},
+            "workflow": {"planning": "sometimes", "small_review_max_lines": 9999},
         },
     )
     with pytest.raises(config.ConfigError) as err:
         config.validate(bad)
     msg = str(err.value)
-    for fragment in ("{ticket_id}", "mr.title", "mr.draft", "models.planner", "workflow.planning"):
+    for fragment in (
+        "{ticket_id}",
+        "mr.title",
+        "mr.draft",
+        "models.planner",
+        "workflow.planning",
+        "models.reviewer_small",
+        "small_review_max_lines",
+    ):
         assert fragment in msg
 
 
