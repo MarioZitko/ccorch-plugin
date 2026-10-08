@@ -345,4 +345,5 @@ tests/                            pytest (real git repos in temp dirs, fake `cla
 
 The `ccorch` helper (on Claude's PATH while the plugin is enabled): `context`, `start`,
 `branch-name`, `gate`, `commit`, `note`, `hold`, `resume`, `review-info`, `review-model`, `mr`, `finish`,
-`status`, `inbox list|show`, `init`, `manage`, `hook stop`.
+`status`, `inbox list|show|add`, `next-id`, `ticket-check`, `jira status|show|move`, `init`, `manage`,
+`hook stop`.

@@ -188,7 +188,7 @@ function QueuedCard(props: {
           </a>
         )}
         {t.jira_status && <Badge tone="indigo">{t.jira_status}</Badge>}
-        <div className="ml-auto flex gap-1.5 whitespace-nowrap">
+        <div className="ml-auto flex flex-wrap justify-end gap-1.5 whitespace-nowrap">
           <button
             type="button"
             className="btn py-1 text-xs"
@@ -265,8 +265,10 @@ function QueuedCard(props: {
               Claude Code is working on this ticket. It picks up your change before its next step
               (next phase, review or merge request).
             </Banner>
-          ) : finished ? (
+          ) : t.status === "done" ? (
             <Banner>The merge request is already open - this change won&apos;t reach it.</Banner>
+          ) : t.status === "abandoned" ? (
+            <Banner>This ticket was abandoned - nothing is working on it.</Banner>
           ) : t.status === "started" ? (
             <Banner>Started on {t.branch}.</Banner>
           ) : null}
@@ -348,7 +350,9 @@ export function InboxView(props: { repoId: number; activeTicketId?: string; inta
   const newTicket = async () => {
     try {
       const n = await api.nextId(repoId, drafts.length + 1);
-      const id = n.ids[drafts.length] ?? n.ids[n.ids.length - 1];
+      // Skip ids already on screen (a draft may have been removed from the middle).
+      const used = new Set(drafts.map((d) => d.id));
+      const id = n.ids.find((i) => !used.has(i)) ?? n.ids[n.ids.length - 1];
       setDrafts([
         ...drafts,
         { id, type: "task", title: "", description: "", acceptance_criteria: [], size: "big" },
@@ -396,7 +400,7 @@ export function InboxView(props: { repoId: number; activeTicketId?: string; inta
           value={text}
           onChange={(e) => setText(e.target.value)}
         />
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <button type="button" className="btn btn-primary" disabled={busy || !text.trim()} onClick={extract}>
             {busy ? "Reading…" : "Extract tickets"}
           </button>
@@ -424,9 +428,9 @@ export function InboxView(props: { repoId: number; activeTicketId?: string; inta
 
       {drafts.length > 0 && (
         <section className="grid gap-3">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-sm font-semibold">Review {drafts.length} tickets</h2>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {jiraOn && (
                 <label className="flex items-center gap-1.5 text-xs">
                   <input type="checkbox" checked={alsoJira} onChange={(e) => setAlsoJira(e.target.checked)} />
