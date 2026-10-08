@@ -40,7 +40,7 @@ that's missing: a smaller reviewer picked automatically for small changes.
 | 3 | [Next ticket number from remote branches / MRs / Jira](3-ticket-numbers.md) | M | 2 for the Jira source (optional) |
 | 4 | [Edit tickets after they are launched](4-edit-tickets.md) | M | 0; 2 for Jira sync (optional) |
 
-Run them **one at a time, in this order**, and merge each into `main` before starting the next.
+Run them **one at a time, in this order**, committing each directly on `main` before starting the next.
 They all touch the same few files (`config.py`, `cli.py`, `server.py`, `api.ts`,
 `RepoSettings.tsx`, `InboxView.tsx`, the ticket skill, README), so running them in parallel
 would cause merge conflicts. Plans 3 and 4 check whether plan 2 is already merged
@@ -84,7 +84,7 @@ Paste one prompt per agent. Each prompt is self-contained.
 You are working in the ccorch-plugin repo (/Users/mariozitko/Projects/ccorch-plugin).
 Read CLAUDE.md, then docs/plans/README.md (audit + rules for every plan), then implement
 docs/plans/0-audit-fixes.md and after it docs/plans/1-reviewer-model.md.
-Work on a new branch `feat/audit-fixes-reviewer-model` from main. The plans are the spec; where
+Work directly on `main` (no new branch). The plans are the spec; where
 they leave a detail open, follow the nearest existing code. Include the tests, UI changes (and
 rebuild static/), README and CLAUDE.md updates each plan lists. Run every check in the
 "Definition of done" until all pass. Commit (one commit per plan), do not push, do not bump the
@@ -100,7 +100,7 @@ Read CLAUDE.md, then docs/plans/README.md (rules for every plan), then implement
 docs/plans/2-jira.md: a stdlib Jira client, credentials outside the repo, fetching an issue by
 key, creating issues from the inbox, and moving issues between board columns (statuses) when
 ccorch starts a ticket, opens the MR or abandons it.
-Work on a new branch `feat/jira` from main. Before writing the client, check Atlassian's current
+Work directly on `main` (no new branch). Before writing the client, check Atlassian's current
 REST docs for the endpoints listed in the plan's "Verify first" section and note in the code
 which API version each call uses. Never contact a real Jira: tests use the fake HTTP server the
 plan describes. Jira problems must never fail a ccorch command or block a session; they become
@@ -120,7 +120,7 @@ docs/plans/3-ticket-numbers.md: new tickets get the next number after the highes
 used, taken from remote branches and merged-MR commit history (and from Jira, if
 plugins/ccorch/scripts/ccorch_lib/jira.py exists - plan 2 merged), plus `ccorch next-id`,
 `ccorch inbox add`, `/ccorch:ticket new ...` and a "New ticket" button in the Inbox.
-Work on a new branch `feat/ticket-numbers` from main. If jira.py does not exist, leave out the
+Work directly on `main` (no new branch). If jira.py does not exist, leave out the
 `jira` source exactly as the plan says. Tests use bare git repos and, for Jira, the fake server
 from tests/ (never a real service). Include the tests, UI (rebuild static/), skill, README and
 CLAUDE.md changes. Run every check in the "Definition of done" until all pass. Commit, do not
@@ -136,7 +136,7 @@ Read CLAUDE.md, then docs/plans/README.md (rules for every plan), then implement
 docs/plans/4-edit-tickets.md: inbox tickets can be edited in the settings page at any time,
 including after "Open in Claude Code" started them; the running /ccorch:ticket session picks the
 change up at its next step through `ccorch ticket-check`.
-Work on a new branch `feat/edit-tickets` from main. If
+Work directly on `main` (no new branch). If
 plugins/ccorch/scripts/ccorch_lib/jira.py exists (plan 2 merged), also do the plan's Jira sync
 part; otherwise skip it. Keep the main session lean: ticket-check prints only what changed.
 Include the tests, UI (rebuild static/), skill, README and CLAUDE.md changes. Run every check in
