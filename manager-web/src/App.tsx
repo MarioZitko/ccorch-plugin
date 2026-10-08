@@ -130,7 +130,7 @@ export default function App() {
 
   return (
     <div className="flex h-screen">
-      <aside className="flex w-72 shrink-0 flex-col border-r border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+      <aside className="flex w-72 shrink-0 flex-col overflow-hidden border-r border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
         <div className="border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
           <div className="text-sm font-semibold">ccorch manager</div>
           <div className="text-xs text-zinc-500">Per-repo settings for /ccorch:ticket</div>
@@ -152,8 +152,8 @@ export default function App() {
               }`}
             >
               <div className="flex items-center justify-between gap-2">
-                <span className="truncate text-sm font-medium">{r.name}</span>
-                {status(r)}
+                <span className="min-w-0 truncate text-sm font-medium">{r.name}</span>
+                <span className="shrink-0">{status(r)}</span>
               </div>
               <div className="truncate font-mono text-[11px] text-zinc-500">
                 {r.active_ticket ? `▶ ${r.active_ticket.ticket_id} · ${r.active_ticket.branch}` : r.branch}

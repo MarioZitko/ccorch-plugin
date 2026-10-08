@@ -87,19 +87,19 @@ export function VersionsBox(props: { notify: (m: string, err?: boolean) => void 
 
   const row = "flex items-center justify-between gap-2 text-xs";
   return (
-    <div className="mt-3 grid gap-2 rounded-md border border-zinc-200 p-2.5 dark:border-zinc-800">
+    <div className="mt-3 grid grid-cols-1 gap-2 rounded-md border border-zinc-200 p-2.5 dark:border-zinc-800">
       <div className={row}>
-        <span className="truncate text-zinc-500" title={plugin?.running_from}>
+        <span className="min-w-0 truncate text-zinc-500" title={plugin?.running_from}>
           ccorch {plugin?.installed_version ?? plugin?.running_version ?? "…"}
           {plugin?.dev_checkout && " (dev checkout)"}
         </span>
         {plugin?.installed &&
           (plugin.update_available ? (
-            <button type="button" className="btn btn-primary px-2 py-0.5 text-xs" disabled={busy !== null} onClick={update}>
+            <button type="button" className="btn btn-primary shrink-0 px-2 py-0.5 text-xs" disabled={busy !== null} onClick={update}>
               {busy === "plugin" ? "Updating…" : `Update to ${plugin.available_version}`}
             </button>
           ) : (
-            <button type="button" className="btn px-2 py-0.5 text-xs" disabled={busy !== null} onClick={check}>
+            <button type="button" className="btn shrink-0 px-2 py-0.5 text-xs" disabled={busy !== null} onClick={check}>
               {busy === "check" ? "Checking…" : "Check for updates"}
             </button>
           ))}
@@ -108,11 +108,11 @@ export function VersionsBox(props: { notify: (m: string, err?: boolean) => void 
         <p className="text-[11px] text-zinc-500">Not installed as a plugin - updates come from your git checkout.</p>
       )}
       <div className={row}>
-        <span className="truncate text-zinc-500" title={cli?.path ?? ""}>
+        <span className="min-w-0 truncate text-zinc-500" title={cli?.path ?? ""}>
           {cli === null ? "Claude Code …" : cli.path ? `Claude Code ${cli.version}` : "Claude Code not found"}
         </span>
         {cli?.path && (
-          <button type="button" className="btn px-2 py-0.5 text-xs" disabled={busy !== null} onClick={updateCli}>
+          <button type="button" className="btn shrink-0 px-2 py-0.5 text-xs" disabled={busy !== null} onClick={updateCli}>
             {busy === "cli" ? "Updating…" : "Update"}
           </button>
         )}

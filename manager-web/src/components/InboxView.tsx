@@ -22,8 +22,9 @@ function TicketFields(props: {
   const { t, onChange } = props;
   return (
     <div className="grid gap-3">
-      <div className="grid gap-2 sm:grid-cols-[9rem_8rem_6.5rem_1fr_auto]">
-        <div title={props.idLockedReason}>
+      {/* Wraps instead of squeezing: the title keeps at least 12rem. */}
+      <div className="flex flex-wrap gap-2">
+        <div className="w-36" title={props.idLockedReason}>
           <TextInput
             mono
             value={t.id}
@@ -31,15 +32,21 @@ function TicketFields(props: {
             onChange={(id) => onChange({ ...t, id })}
           />
         </div>
-        <Select value={t.type} options={TYPES} onChange={(v) => onChange({ ...t, type: v as TicketType })} />
-        <Select
-          value={t.size}
-          options={["small", "big"]}
-          onChange={(v) => onChange({ ...t, size: v as "small" | "big" })}
-        />
-        <TextInput value={t.title} onChange={(title) => onChange({ ...t, title })} />
+        <div className="w-32">
+          <Select value={t.type} options={TYPES} onChange={(v) => onChange({ ...t, type: v as TicketType })} />
+        </div>
+        <div className="w-26">
+          <Select
+            value={t.size}
+            options={["small", "big"]}
+            onChange={(v) => onChange({ ...t, size: v as "small" | "big" })}
+          />
+        </div>
+        <div className="min-w-48 flex-1">
+          <TextInput value={t.title} placeholder="Title" onChange={(title) => onChange({ ...t, title })} />
+        </div>
         {props.onRemove && (
-          <button type="button" className="btn px-2" title="Drop this ticket" onClick={props.onRemove}>
+          <button type="button" className="btn shrink-0 px-2" title="Drop this ticket" onClick={props.onRemove}>
             ✕
           </button>
         )}
