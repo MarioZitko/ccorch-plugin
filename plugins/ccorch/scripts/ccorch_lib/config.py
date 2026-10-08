@@ -61,6 +61,7 @@ DEFAULTS: dict[str, Any] = {
     },
     "intake": {
         "id_prefix": "T",
+        "id_source": "local",
     },
     "models": {
         "intake": "haiku",
@@ -84,6 +85,7 @@ DEFAULTS: dict[str, Any] = {
 MODEL_ROLES = ("intake", "planner", "implementer", "reviewer", "reviewer_small")
 PLANNING_CHOICES = ("auto", "always", "never")
 JIRA_DEPLOYMENTS = ("cloud", "server")
+ID_SOURCES = ("local", "git", "jira")
 JIRA_EVENTS = ("start", "mr_opened", "abandoned")
 _JIRA_PROJECT = re.compile(r"^[A-Z][A-Z0-9_]{0,19}$")
 _ID_PREFIX = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,15}$")
@@ -237,10 +239,22 @@ def validate(cfg: dict[str, Any]) -> None:
         errors,
     )
 
+    _validate_id_source(cfg, errors)
     _validate_jira(cfg["jira"], errors)
 
     if errors:
         raise ConfigError("; ".join(errors))
+
+
+def _validate_id_source(cfg: dict[str, Any], errors: list[str]) -> None:
+    source = cfg["intake"]["id_source"]
+    if source not in ID_SOURCES:
+        errors.append(f"intake.id_source must be one of {ID_SOURCES}")
+    elif source == "jira":
+        if cfg["jira"]["enabled"] is not True:
+            errors.append("intake.id_source = jira needs [jira] enabled = true")
+        elif cfg["intake"]["id_prefix"] != cfg["jira"]["project_key"]:
+            errors.append("intake.id_source = jira needs intake.id_prefix = jira.project_key")
 
 
 def _validate_jira(jira: dict[str, Any], errors: list[str]) -> None:

@@ -214,6 +214,20 @@ export function InboxView(props: { repoId: number; intakeModel: string; jira?: C
     }
   };
 
+  const newTicket = async () => {
+    try {
+      const n = await api.nextId(repoId, drafts.length + 1);
+      const id = n.ids[drafts.length] ?? n.ids[n.ids.length - 1];
+      setDrafts([
+        ...drafts,
+        { id, type: "task", title: "", description: "", acceptance_criteria: [], size: "big" },
+      ]);
+      if (n.warning) notify(n.warning, true);
+    } catch (e) {
+      notify((e as Error).message, true);
+    }
+  };
+
   const save = async () => {
     try {
       const clean = drafts.map((d) => ({ ...d, acceptance_criteria: d.acceptance_criteria.filter((c) => c.trim()) }));
@@ -255,6 +269,9 @@ export function InboxView(props: { repoId: number; intakeModel: string; jira?: C
           <button type="button" className="btn btn-primary" disabled={busy || !text.trim()} onClick={extract}>
             {busy ? "Reading…" : "Extract tickets"}
           </button>
+          <button type="button" className="btn" onClick={newTicket}>
+            + New ticket
+          </button>
           {result && (
             <span className="text-xs text-zinc-500">
               {result.tickets.length} tickets · {result.model} · {(result.duration_ms / 1000).toFixed(1)}s
@@ -262,6 +279,11 @@ export function InboxView(props: { repoId: number; intakeModel: string; jira?: C
             </span>
           )}
         </div>
+        {result?.id_warning && (
+          <p className="rounded-md bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/50 dark:text-amber-200">
+            {result.id_warning}
+          </p>
+        )}
         {result?.notes && (
           <p className="rounded-md bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/50 dark:text-amber-200">
             {result.notes}
@@ -277,7 +299,7 @@ export function InboxView(props: { repoId: number; intakeModel: string; jira?: C
               {jiraOn && (
                 <label className="flex items-center gap-1.5 text-xs">
                   <input type="checkbox" checked={alsoJira} onChange={(e) => setAlsoJira(e.target.checked)} />
-                  Also create in Jira ({props.jira?.project_key})
+                  Also create in Jira ({props.jira?.project_key}; Jira assigns the key on save)
                 </label>
               )}
               <button type="button" className="btn" onClick={() => setDrafts([])}>

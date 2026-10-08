@@ -25,7 +25,8 @@ into tickets and updates the plugin.
 | Gate runner (build/test commands, timeout, output tail) | `ccorch_lib/gate.py` |
 | GitLab MR push options (one-line values only) | `ccorch_lib/mr.py` |
 | Ticket state + history in `.git/ccorch/` | `ccorch_lib/state.py` |
-| Inbox (`.git/ccorch/inbox/*.json`, ids like `T-001`) | `ccorch_lib/inbox.py` |
+| Inbox (`.git/ccorch/inbox/*.json`, ids like `T-001`); `ccorch inbox add` | `ccorch_lib/inbox.py` |
+| Next ticket number (local / remote branches + base history / Jira), `ccorch next-id`, `GET /api/repos/{id}/next-id`, UI `NumbersSection` + Inbox **+ New ticket** | `ccorch_lib/ticket_ids.py`, `git.ls_remote_heads`; `tests/test_ticket_ids.py` |
 | Transcript → tickets (one tool-less headless call, JSON schema) | `ccorch_lib/intake.py`, `ccorch_lib/claude.py` |
 | Detect repo defaults; plan/apply install (toml, settings.json merge, .gitignore) | `ccorch_lib/install.py` |
 | Open a terminal running `claude "/ccorch:ticket ID"` (macOS/Windows/Linux) | `ccorch_lib/terminal.py` |
@@ -122,6 +123,8 @@ then restart Claude Code.
 - A full `/ccorch:ticket` run in a real, signed-in Claude Code session (skill instructions,
   plan/quick decision, subagent hand-offs, hook behaviour inside a live session).
 - A real GitLab push creating an MR (tests use a bare repo that accepts push options).
+- Ticket numbers from a real GitLab remote (tests use a bare repo) and `id_source = jira` against
+  a real Jira (fake server only).
 - Everything Jira against a real Jira Cloud and a real Server/Data Center (tests only use
   `tests/fake_jira.py`): auth, v2 plain-text descriptions on Cloud, `search/jql`, workflow moves.
 - Anything on Windows: hook execution, `bin/ccorch`, **Open in Claude Code** (`wt`/`cmd`).

@@ -41,6 +41,7 @@ from ccorch_lib import (  # noqa: E402
     jira,
     plugin_update,
     terminal,
+    ticket_ids,
 )
 from ccorch_lib.git import Git, GitError, find_root  # noqa: E402
 from ccorch_lib.home import ccorch_home  # noqa: E402
@@ -440,7 +441,8 @@ def create_app(reg: Registry, port: int = 7420) -> FastAPI:
             drafts, notes, answer = intake.extract(body.text, cfg["models"]["intake"], path)
         except claude.ClaudeError as exc:
             raise HTTPException(502, str(exc)) from exc
-        fresh: Iterator[str] = iter(inbox.next_ids(cfg["intake"]["id_prefix"], len(drafts)))
+        numbers = ticket_ids.next_ids(cfg, path, inbox.store, len(drafts))
+        fresh: Iterator[str] = iter(numbers.ids)
         tickets = []
         for d in drafts:
             ext = str(d.get("external_id", "")).strip()
@@ -448,9 +450,26 @@ def create_app(reg: Registry, port: int = 7420) -> FastAPI:
         return {
             "tickets": tickets,
             "notes": notes,
+            "id_source": numbers.source,
+            "id_warning": numbers.warning,
             "cost_usd": answer.cost_usd,
             "duration_ms": answer.duration_ms,
             "model": answer.model,
+        }
+
+    @app.get("/api/repos/{repo_id}/next-id")
+    def next_id(repo_id: int, count: int = 1) -> dict[str, Any]:
+        path, inbox = _inbox(repo_id)
+        try:
+            cfg = config.load(path)
+        except config.ConfigError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        found = ticket_ids.next_ids(cfg, path, inbox.store, max(1, min(count, 50)))
+        return {
+            "ids": found.ids,
+            "source": found.source,
+            "last": found.last,
+            "warning": found.warning,
         }
 
     @app.get("/api/repos/{repo_id}/inbox")
@@ -472,29 +491,7 @@ def create_app(reg: Registry, port: int = 7420) -> FastAPI:
         for draft in body.tickets:
             try:
                 ticket = inbox.normalize_ticket(draft)
-                if jira.is_jira_key(cfg, ticket["id"]):
-                    # Already an issue (e.g. the transcript named PROJ-9): link it, don't create.
-                    key = ticket["id"]
-                    ticket = {
-                        **ticket,
-                        "jira_key": key,
-                        "jira_url": f"{client.base}/browse/{key}",
-                    }
-                else:
-                    jc = cfg["jira"]
-                    key = client.create_issue(
-                        jc["project_key"],
-                        jc["issue_types"][ticket["type"]],
-                        ticket["title"],
-                        jira.ticket_description(ticket),
-                    )
-                    ticket = {
-                        **ticket,
-                        "id": key,
-                        "jira_key": key,
-                        "jira_url": f"{client.base}/browse/{key}",
-                        "jira_status": "",
-                    }
+                ticket = jira.link_or_create(cfg, client, ticket)
                 saved += inbox.add([ticket])
             except (jira.JiraError, InboxError) as exc:
                 failed.append({"draft": draft, "error": str(exc)})

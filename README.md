@@ -135,11 +135,14 @@ Check which version you have with `claude plugin list`.
 | In Claude Code | What it does |
 |---|---|
 | `/ccorch:ticket <ID> [quick\|plan] [auto] [text]` | The full workflow. `quick` = no planning, `plan` = always plan, `auto` = don't ask me to approve the plan. |
+| `/ccorch:ticket new [quick\|plan] [auto] <text>` | Same, for a ticket that has no id yet: Claude writes it up from your text, gives it the next free number (see [Ticket numbers](#ticket-numbers)) and runs the workflow. |
 | `/ccorch:mr [notes]` | Commit pending work (through the gate) and open the merge request. |
 | `/ccorch:manage` | Open the settings page. |
 
-`ccorch` also has a helper command that Claude (or you) can run: `ccorch jira status [KEY]`,
-`ccorch jira show KEY` and `ccorch jira move KEY "Status"` (see [Jira](#jira)).
+`ccorch` also has helper commands that Claude (or you) can run: `ccorch jira status [KEY]`,
+`ccorch jira show KEY` and `ccorch jira move KEY "Status"` (see [Jira](#jira)), `ccorch next-id`
+(prints the next free ticket number) and `ccorch inbox add --type bug --title "…"` (saves a ticket
+to the inbox; also `--description`, `--criteria` (repeatable), `--size small|big`, `--id`).
 
 While a ticket is running you can watch everything in the session. `/context` shows what is using
 your context. To stop tracking a ticket without finishing it, ask Claude to run
@@ -176,8 +179,9 @@ Open it with `/ccorch:manage`. It runs only on your computer (`127.0.0.1`).
    It uses your Claude subscription, not API credits: if `ANTHROPIC_API_KEY` is set on your
    computer, the settings page removes it for this call and shows a warning.
 3. Review and edit the cards (id, type, size, title, description, acceptance criteria), remove
-   what you don't want, then **Save to inbox**. Tickets without an id get `T-001`, `T-002`, …
-   (change the prefix per repo under *Tickets from transcripts* in the Settings tab).
+   what you don't want, then **Save to inbox**. **+ New ticket** adds an empty card so you can
+   write one by hand. Tickets without an id get the next free number, `T-001`, `T-002`, … (see
+   [Ticket numbers](#ticket-numbers)).
    If Jira is connected and *Create issues from the Inbox* is on, **Also create in Jira** (ticked
    by default) creates each ticket as a Jira issue and uses the Jira key (`PROJ-456`) as its id.
    If some fail, the ones that worked are saved and the failed ones stay on screen with the reason.
@@ -188,6 +192,24 @@ Open it with `/ccorch:manage`. It runs only on your computer (`127.0.0.1`).
 
 Short one-shot steps like this run in the background and show their result in the settings page.
 Everything that changes code runs in Claude Code, where you can watch and steer it.
+
+### Ticket numbers
+
+New tickets continue after the highest number already used, so two people don't both create
+`T-001`. Under *Ticket numbers* in the Settings tab, set the **ID prefix** and where to look:
+
+- **local** - this clone only: your inbox, past tickets and the active ticket.
+- **git** - also the branches on the remote, plus the base branch's commit history. Merged merge
+  requests count because their commits (`[PROJ-12] …`, "Merge branch 'fix/PROJ-15-…'") are on
+  the base branch even after the source branch was deleted. Only the last 2000 commits are read.
+- **jira** - also the highest key in the Jira project (only offered when Jira is turned on; the
+  prefix must equal the project key).
+
+The next number is always one more than the highest found, with the same number of digits the
+team already uses (`PROJ-1412` → `PROJ-1413`). **Check** shows the result. If the remote or Jira
+can't be reached, ccorch numbers from this clone only and shows a warning. `ccorch next-id`
+prints the same numbers in a terminal. With Jira, a number is only a preview: Jira assigns the
+real key when the issue is created.
 
 ## Jira
 

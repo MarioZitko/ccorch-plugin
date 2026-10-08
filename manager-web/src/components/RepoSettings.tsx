@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type Config, type GateRun, type Meta, type TicketType } from "../api";
+import { api, type Config, type GateRun, type Meta, type NextIds, type TicketType } from "../api";
 import {
   Field,
   ListEditor,
@@ -205,21 +205,81 @@ export function RepoSettings(props: { repoId: number; meta: Meta; config: Config
 
       <JiraSection repoId={props.repoId} config={c} update={update} />
 
-      <Section title="Tickets from transcripts" hint="Used by the Inbox tab.">
-        <Row>
-          <Field
-            label="ID prefix"
-            hint={`Tickets without an id in the transcript get ${c.intake.id_prefix || "T"}-001, -002, …`}
-          >
-            <TextInput
-              mono
-              value={c.intake.id_prefix}
-              onChange={(v) => update((x) => void (x.intake.id_prefix = v))}
-            />
-          </Field>
-        </Row>
-      </Section>
+      <NumbersSection repoId={props.repoId} config={c} update={update} />
     </div>
+  );
+}
+
+const SOURCE_HINTS = {
+  local: "This clone only: continues after the highest number in your inbox and past tickets.",
+  git: "Open branches on the remote plus the base branch's history, so merged MRs count too.",
+  jira: "The highest key in the Jira project (needs Jira turned on above).",
+} as const;
+
+function NumbersSection(props: { repoId: number; config: Config; update: Update }) {
+  const { config: c, update } = props;
+  const [check, setCheck] = useState<NextIds | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const run = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      setCheck(await api.nextId(props.repoId));
+    } catch (e) {
+      setCheck(null);
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const setSource = (v: string) =>
+    update((x) => {
+      x.intake.id_source = v as Config["intake"]["id_source"];
+      if (v === "jira" && x.jira.project_key) x.intake.id_prefix = x.jira.project_key;
+    });
+
+  return (
+    <Section
+      title="Ticket numbers"
+      hint="Used by the Inbox tab and `ccorch inbox add` for tickets that have no id yet."
+    >
+      <Row>
+        <Field
+          label="ID prefix"
+          hint={`New tickets get ${c.intake.id_prefix || "T"}-001, -002, … (or continue after the highest number found).`}
+        >
+          <TextInput
+            mono
+            value={c.intake.id_prefix}
+            onChange={(v) => update((x) => void (x.intake.id_prefix = v))}
+          />
+        </Field>
+        <Field label="Continue after the highest number in" hint={SOURCE_HINTS[c.intake.id_source]}>
+          <Select
+            value={c.intake.id_source}
+            options={c.jira.enabled ? ["local", "git", "jira"] : ["local", "git"]}
+            onChange={setSource}
+          />
+        </Field>
+      </Row>
+      <div className="flex flex-wrap items-center gap-3 text-sm">
+        <button type="button" className="btn" disabled={busy} onClick={run}>
+          {busy ? "Checking…" : "Check"}
+        </button>
+        <span className="text-xs text-zinc-500">Uses the saved settings.</span>
+        {check && !check.warning && (
+          <span>
+            {check.last ? `Last used: ${check.last}` : "Nothing used yet"} → next{" "}
+            <span className="font-mono">{check.ids[0]}</span>
+          </span>
+        )}
+        {check?.warning && <span className="text-amber-700 dark:text-amber-300">{check.warning}</span>}
+        {error && <span className="text-red-600 dark:text-red-400">{error}</span>}
+      </div>
+    </Section>
   );
 }
 

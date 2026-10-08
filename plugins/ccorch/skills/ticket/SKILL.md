@@ -2,13 +2,14 @@
 name: ticket
 description: Take a ticket from id to GitLab merge request - named branch, plan (or a quick no-plan path for small fixes), implementation with a build/test gate, review, MR.
 disable-model-invocation: true
-argument-hint: <TICKET-ID> [quick|plan] [auto] [ticket text...]
+argument-hint: <TICKET-ID|new> [quick|plan] [auto] [ticket text...]
 allowed-tools: Bash(ccorch *), Bash(git status*), Bash(git diff*), Bash(git log*)
 ---
 
 # Ticket → merge request
 
-Arguments: `$ARGUMENTS` - the first word is the ticket id. Flags anywhere after it:
+Arguments: `$ARGUMENTS` - the first word is the ticket id, or `new` when the ticket has no id yet
+(`/ccorch:ticket new Fix the invoice footer`). Flags anywhere after it:
 - `quick` - small change: no planning, implement directly (step 3).
 - `plan` - always plan, even if it looks small.
 - `auto` - don't stop to ask me to approve the plan.
@@ -30,7 +31,14 @@ Run `ccorch context`.
 
 ## 1. Ticket
 
-Run `ccorch inbox show <ID>`. It finds the ticket in the inbox or, for Jira keys, in Jira, and
+If the first word is `new`: draft the type (`feature`, `bug` or `task`), a short title, a
+description and acceptance criteria from the text, then run
+`ccorch inbox add --type <type> --title "<title>" --description "<description>" --criteria "<c1>" --criteria "<c2>"`
+(add `--size small` for an obviously small change). The first line it prints is the ticket id
+(the next free number, or the Jira key if Jira creates issues); use it as `<ID>` from here on.
+If it fails, show the error and stop.
+
+Otherwise run `ccorch inbox show <ID>`. It finds the ticket in the inbox or, for Jira keys, in Jira, and
 prints it (including its type and title). If it prints nothing useful, use the ticket text that was
 passed, or another issue tracker tool if one is available; otherwise ask the user to paste title,
 description and acceptance criteria.

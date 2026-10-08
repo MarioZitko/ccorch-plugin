@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 from typing import Any
 
 from ccorch_lib.branch import clean_ticket_id
 from ccorch_lib.config import TICKET_TYPES
 from ccorch_lib.state import StateStore, now
+from ccorch_lib.ticket_ids import numbers_local
 
 JIRA_FIELDS = ("jira_key", "jira_url", "jira_status", "jira_updated")
 FIELDS = ("id", "type", "title", "description", "acceptance_criteria", "size")
@@ -123,12 +123,7 @@ class Inbox:
         self._path(tid).write_text(json.dumps(item, indent=2), encoding="utf-8")
 
     def next_ids(self, prefix: str, count: int) -> list[str]:
-        """`count` fresh ids like T-007, not used in the inbox or in past tickets."""
-        pattern = re.compile(rf"^{re.escape(prefix)}-(\d+)$")
-        used = [t["id"] for t in self.items()]
-        used += [str(h.get("ticket_id", "")) for h in self.store.read_history(10_000)]
-        state = self.store.load()
-        if state:
-            used.append(state.ticket_id)
-        top = max((int(m.group(1)) for u in used if (m := pattern.match(u))), default=0)
-        return [f"{prefix}-{top + i:03d}" for i in range(1, count + 1)]
+        """`count` fresh ids like T-007, not used in the inbox or in past tickets (this clone)."""
+        top = numbers_local(self.store, prefix)
+        start = top.number if top else 0
+        return [f"{prefix}-{start + i:03d}" for i in range(1, count + 1)]

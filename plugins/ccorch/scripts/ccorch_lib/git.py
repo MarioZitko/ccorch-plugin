@@ -123,6 +123,11 @@ class Git:
         prefix = f"refs/remotes/{self.remote}/"
         return ref[len(prefix) :] if proc.returncode == 0 and ref.startswith(prefix) else None
 
+    def ls_remote_heads(self) -> list[str]:
+        """Branch names on the remote (no fetch needed)."""
+        out = self.run("ls-remote", "--heads", self.remote).stdout
+        return [ln.partition("refs/heads/")[2] for ln in out.splitlines() if "refs/heads/" in ln]
+
     def fetch(self) -> None:
         self.run("fetch", self.remote, "--prune")
 

@@ -309,6 +309,34 @@ def client_for(cfg: dict[str, Any]) -> Jira | None:
     return Jira(jc["url"], jc["deployment"], creds)
 
 
+def link_or_create(cfg: dict[str, Any], client: Jira, ticket: dict[str, Any]) -> dict[str, Any]:
+    """The ticket with its Jira fields: an existing key is linked, otherwise an issue is created."""
+    key = str(ticket["id"])
+    if is_jira_key(cfg, key):
+        # Already an issue (e.g. the transcript named PROJ-9): link it, don't create. With
+        # `intake.id_source = jira` a draft id can also be a number preview Jira has not issued.
+        try:
+            client.get_issue(key)
+            return {**ticket, "jira_key": key, "jira_url": f"{client.base}/browse/{key}"}
+        except JiraError as exc:
+            if "HTTP 404" not in str(exc):
+                raise
+    jc = cfg["jira"]
+    key = client.create_issue(
+        jc["project_key"],
+        jc["issue_types"][ticket["type"]],
+        ticket["title"],
+        ticket_description(ticket),
+    )
+    return {
+        **ticket,
+        "id": key,
+        "jira_key": key,
+        "jira_url": f"{client.base}/browse/{key}",
+        "jira_status": "",
+    }
+
+
 def is_jira_key(cfg: dict[str, Any], ticket_id: str) -> bool:
     jc = cfg["jira"]
     return bool(jc["enabled"]) and bool(

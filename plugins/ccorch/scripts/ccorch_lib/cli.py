@@ -10,9 +10,9 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from ccorch_lib import branch, config, gate, install, jira, mr
+from ccorch_lib import branch, config, gate, install, jira, mr, ticket_ids
 from ccorch_lib.git import Git, GitError, find_root
-from ccorch_lib.inbox import Inbox, to_markdown
+from ccorch_lib.inbox import Inbox, InboxError, to_markdown
 from ccorch_lib.state import StateStore, TicketState
 
 HOOK_TAIL_LINES = 80
@@ -385,9 +385,58 @@ def cmd_finish(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_next_id(args: argparse.Namespace) -> int:
+    ctx = Ctx(Path.cwd())
+    found = ticket_ids.next_ids(ctx.cfg, ctx.root, ctx.store, max(1, args.count))
+    for tid in found.ids:
+        print(tid)
+    if found.warning:
+        print(f"# {found.warning}")
+    else:
+        last = f"highest {found.last}" if found.last else "nothing used yet"
+        print(f"# source: {found.source} ({last})")
+    return 0
+
+
+def _inbox_add(ctx: Ctx, inbox: Inbox, args: argparse.Namespace) -> int:
+    if not args.title or not args.title.strip():
+        raise CliError("usage: ccorch inbox add --type TYPE --title TITLE [...]")
+    tid = args.new_id or ticket_ids.next_ids(ctx.cfg, ctx.root, ctx.store, 1).ids[0]
+    ticket = {
+        "id": tid,
+        "type": args.type,
+        "title": args.title,
+        "description": args.description or "",
+        "acceptance_criteria": args.criteria or [],
+        "size": args.size,
+    }
+    try:
+        ticket = inbox.normalize_ticket(ticket)
+        notes: list[str] = []
+        jc = ctx.cfg["jira"]
+        if jc["enabled"] and jc["create_issues"]:
+            try:
+                client = jira.client_for(ctx.cfg)
+                if client is None:
+                    notes.append("Jira warning: no login found; saved without a Jira issue")
+                else:
+                    ticket = jira.link_or_create(ctx.cfg, client, ticket)
+            except Exception as exc:  # Jira trouble must never fail the command
+                notes.append(f"Jira warning: {exc}; saved without a Jira issue")
+        (saved,) = inbox.add([ticket], source="cli")
+    except InboxError as exc:
+        raise CliError(str(exc)) from exc
+    print(saved)
+    for note in notes:
+        print(note)
+    return 0
+
+
 def cmd_inbox(args: argparse.Namespace) -> int:
     ctx = Ctx(Path.cwd())
     inbox = Inbox(ctx.store)
+    if args.action == "add":
+        return _inbox_add(ctx, inbox, args)
     if args.action == "show":
         item = inbox.get(args.id or "")
         if item is None and jira.is_jira_key(ctx.cfg, args.id or ""):
@@ -634,9 +683,19 @@ def build_parser() -> argparse.ArgumentParser:
     sp.set_defaults(fn=cmd_status)
 
     sp = sub.add_parser("inbox", help="tickets extracted in the manager UI")
-    sp.add_argument("action", choices=["list", "show"])
-    sp.add_argument("id", nargs="?")
+    sp.add_argument("action", choices=["list", "show", "add"])
+    sp.add_argument("id", nargs="?", help="ticket id for `show`")
+    sp.add_argument("--id", dest="new_id", help="id for `add` (default: the next number)")
+    sp.add_argument("--type", default="task", choices=list(config.TICKET_TYPES))
+    sp.add_argument("--title")
+    sp.add_argument("--description")
+    sp.add_argument("--criteria", action="append", help="one acceptance criterion; repeatable")
+    sp.add_argument("--size", default="big", choices=["small", "big"])
     sp.set_defaults(fn=cmd_inbox)
+
+    sp = sub.add_parser("next-id", help="the next free ticket number(s)")
+    sp.add_argument("--count", type=int, default=1)
+    sp.set_defaults(fn=cmd_next_id)
 
     sp = sub.add_parser("jira", help="show or move a Jira issue")
     sp.add_argument("action", choices=["status", "show", "move"])

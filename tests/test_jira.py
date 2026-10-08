@@ -294,7 +294,8 @@ def test_inbox_create_in_jira_with_partial_failure(
     assert fake.issues["PROJ-101"]["fields"]["issuetype"]["name"] == "Bug"
     assert "h3. Acceptance criteria" in fake.issues["PROJ-101"]["fields"]["description"]
 
-    # A draft that already has a Jira key is linked, not created again.
+    # A draft whose key is a real issue is linked, not created again.
+    fake.add_issue("PROJ-9", "Existing")
     res = client.post(
         "/api/repos/0/inbox",
         headers=H,
@@ -306,7 +307,7 @@ def test_inbox_create_in_jira_with_partial_failure(
     assert res == {"saved": ["PROJ-9"], "failed": []}
     existing = next(t for t in client.get("/api/repos/0/inbox").json() if t["id"] == "PROJ-9")
     assert existing["jira_key"] == "PROJ-9" and existing["jira_url"].endswith("/browse/PROJ-9")
-    assert "PROJ-9" not in fake.issues and "PROJ-102" not in fake.issues
+    assert "PROJ-102" not in fake.issues
 
 
 def test_issue_status_and_manual_move(client: TestClient, jira_repo: Path, fake: FakeJira) -> None:

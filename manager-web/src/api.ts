@@ -26,7 +26,7 @@ export interface Config {
     small_inline: boolean;
     small_review_max_lines: number;
   };
-  intake: { id_prefix: string };
+  intake: { id_prefix: string; id_source: "local" | "git" | "jira" };
   models: { intake: string; planner: string; implementer: string; reviewer: string; reviewer_small: string };
   jira: {
     enabled: boolean;
@@ -83,9 +83,18 @@ export interface InboxTicket extends TicketDraft {
 export interface IntakeResult {
   tickets: TicketDraft[];
   notes: string;
+  id_source?: string;
+  id_warning?: string | null;
   cost_usd: number;
   duration_ms: number;
   model: string;
+}
+
+export interface NextIds {
+  ids: string[];
+  source: string;
+  last: string | null;
+  warning: string | null;
 }
 
 export interface PluginInfo {
@@ -242,6 +251,8 @@ export const api = {
   claudeUpdate: () => call<{ output: string; version: string }>("POST", "/api/claude/update"),
   intake: (id: number, text: string) =>
     call<IntakeResult>("POST", `/api/repos/${id}/intake`, { text }),
+  nextId: (id: number, count = 1) =>
+    call<NextIds>("GET", `/api/repos/${id}/next-id?count=${count}`),
   inbox: (id: number) => call<InboxTicket[]>("GET", `/api/repos/${id}/inbox`),
   saveInbox: (id: number, tickets: TicketDraft[], create_in_jira = false) =>
     call<{ saved: string[]; failed?: { draft: TicketDraft; error: string }[] }>(
