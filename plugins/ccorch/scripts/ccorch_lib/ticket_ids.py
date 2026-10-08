@@ -96,8 +96,9 @@ def next_ids(cfg: dict[str, Any], root: Path, store: StateStore, count: int) -> 
             source = "local"
     tops = [t for t in (local, remote) if t is not None]
     top = max(tops, key=lambda t: t.number, default=None)
-    # Local numbering is padded (T-001); remote numbering copies the width the team already uses.
-    width = top.width if top is not None and top is remote else DEFAULT_WIDTH
+    # Local numbering is padded (T-001); remote numbering copies the width the team already uses,
+    # also when the highest number is a local ticket (often the one you just pushed).
+    width = top.width if top is not None and source != "local" else DEFAULT_WIDTH
     start = top.number if top else 0
     ids = [f"{prefix}-{start + i:0{width}d}" for i in range(1, count + 1)]
     last = f"{prefix}-{top.number:0{top.width}d} ({top.where})" if top else None

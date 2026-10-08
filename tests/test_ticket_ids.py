@@ -59,6 +59,14 @@ def test_width_is_copied_from_remote_but_local_is_padded(repo: Path) -> None:
     assert ticket_ids.next_ids(cfg_for(source="local"), repo, store(repo), 1).ids == ["PROJ-001"]
 
 
+def test_width_stays_unpadded_when_the_highest_is_local(team_repo: Path) -> None:
+    # The team uses PROJ-15; your own new PROJ-16 (local, or also pushed) must not lead to PROJ-017.
+    Inbox(store(team_repo)).add([{"id": "PROJ-16", "type": "bug", "title": "mine"}])
+    assert ticket_ids.next_ids(cfg_for(), team_repo, store(team_repo), 1).ids == ["PROJ-17"]
+    git(team_repo, "push", "origin", "main:refs/heads/fix/PROJ-16-mine")
+    assert ticket_ids.next_ids(cfg_for(), team_repo, store(team_repo), 1).ids == ["PROJ-17"]
+
+
 def test_local_ids_are_never_reused(team_repo: Path) -> None:
     Inbox(store(team_repo)).add([{"id": "PROJ-020", "type": "bug", "title": "local"}])
     assert ticket_ids.next_ids(cfg_for(), team_repo, store(team_repo), 1).ids == ["PROJ-021"]
